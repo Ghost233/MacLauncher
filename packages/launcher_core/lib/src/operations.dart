@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:maclauncher_sdk/maclauncher_sdk.dart';
 
 import 'binding_store.dart';
+import 'launch_orchestrator.dart';
 import 'server.dart';
 
 /// Default time the launcher waits for a request response. On expiry the
@@ -74,6 +75,42 @@ class StatusUnknown extends StatusResult {
   final String reason;
 }
 
+/// Result of a logs query. Unsupported (capability absent), failed
+/// (application reported a read failure) and unknown (timeout/disconnect)
+/// are distinct so the UI never confuses missing capability with no logs.
+sealed class LogsResult {
+  const LogsResult();
+}
+
+class LogsBatch extends LogsResult {
+  const LogsBatch(this.batch);
+
+  /// Verbatim application-provided batch; entries oldest first, at most the
+  /// requested limit. Timestamps, streams and instanceId pass through
+  /// untouched — nulls stay null and must be labelled, never fabricated.
+  final LogBatch batch;
+
+  /// True when the application did not provide a run scope for this batch;
+  /// the UI must label it 未提供实例范围 instead of implying the current run.
+  bool get instanceScopeMissing => batch.instanceId == null;
+}
+
+class LogsUnsupported extends LogsResult {
+  const LogsUnsupported();
+}
+
+class LogsFailed extends LogsResult {
+  const LogsFailed(this.reason);
+
+  final String reason;
+}
+
+class LogsUnknown extends LogsResult {
+  const LogsUnknown(this.reason);
+
+  final String reason;
+}
+
 /// Which services requests may be routed to: only confirmed binding scope.
 abstract class ServiceScopeLookup {
   bool isServiceInScope(String projectId, String serviceId);
@@ -99,19 +136,92 @@ class ServiceOperations {
     required LauncherServer server,
     required ServiceScopeLookup scope,
     Duration timeout = kDefaultRequestTimeout,
+    LaunchOrchestrator? launcher,
   }) : _server = server,
        _scope = scope,
-       _timeout = timeout;
+       _timeout = timeout,
+       _launcher = launcher;
 
   final LauncherServer _server;
   final ServiceScopeLookup _scope;
   final Duration _timeout;
 
-  Future<OperationOutcome> start(String projectId, String serviceId) =>
-      _change(kMethodStart, projectId, serviceId);
+  /// Used only by [start]: a start notification may pull the application up
+  /// through its configured entry first. Querying and recycling never do.
+  final LaunchOrchestrator? _launcher;
+
+  Future<OperationOutcome> start(String projectId, String serviceId) async {
+    if (_launcher != null && _server.sessionFor(projectId) == null) {
+      final launch = await _launcher.ensureEntryConnected(projectId);
+      switch (launch) {
+        case LaunchAlreadyConnected():
+        case LaunchConnected():
+          break; // fall through to the normal request flow
+        case LaunchUnknown(:final detail):
+          return OperationUnavailable('入口已打开但未连接：$detail');
+        case LaunchUnavailable(:final detail):
+          return OperationUnavailable('无法拉起：$detail');
+        case LaunchConfigBlocked(:final detail):
+          return OperationUnavailable('配置失效，未拉起：$detail');
+        case LaunchOpenFailed(:final error):
+          return OperationUnavailable('入口打开失败：${error.detail}');
+        case LaunchUnbound():
+          return const OperationUnavailable('项目未绑定');
+      }
+    }
+    return _change(kMethodStart, projectId, serviceId);
+  }
 
   Future<OperationOutcome> recycle(String projectId, String serviceId) =>
       _change(kMethodRecycle, projectId, serviceId);
+
+  /// Queries one batch of recent logs. [limit] defaults to 200 and is
+  /// clamped to 1–500, matching the [LogQuery] contract.
+  Future<LogsResult> logs(
+    String projectId,
+    String serviceId, {
+    int? limit,
+  }) async {
+    final check = _route(projectId, serviceId, kMethodLogs);
+    if (check != null) {
+      return switch (check) {
+        _RouteBlock.unsupported => const LogsUnsupported(),
+        _RouteBlock.outOfScope => LogsUnknown(
+          'service out of binding scope: $serviceId',
+        ),
+        _RouteBlock.notConnected => const LogsUnknown(
+          'application not connected',
+        ),
+      };
+    }
+    final clamped = (limit ?? LogQuery.kDefaultLogLimit).clamp(
+      1,
+      LogQuery.kMaxLogLimit,
+    );
+    try {
+      final response = await _server
+          .sessionFor(projectId)!
+          .sendRequest(
+            kMethodLogs,
+            serviceId: serviceId,
+            params: {'limit': clamped},
+            timeout: _timeout,
+          );
+      final error = (response['error'] as Map?)?.cast<String, Object?>();
+      if (error != null) {
+        return error['code'] == ProtocolError.unsupported
+            ? const LogsUnsupported()
+            : LogsFailed('${error['message']}');
+      }
+      final result = (response['result'] as Map?)?.cast<String, Object?>();
+      if (result == null) return const LogsUnknown('empty result');
+      return LogsBatch(LogBatch.fromJson(result));
+    } on TimeoutException {
+      return const LogsUnknown('timeout');
+    } catch (e) {
+      return LogsUnknown('$e');
+    }
+  }
 
   Future<StatusResult> status(String projectId, String serviceId) async {
     final check = _route(projectId, serviceId, kMethodStatus);

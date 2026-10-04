@@ -5,6 +5,7 @@ import 'dart:math';
 
 import 'protocol/codec.dart';
 import 'protocol/messages.dart';
+import 'request_dedup.dart';
 
 /// Callbacks for one service. Only register what the application actually
 /// supports; the declared capability set is derived from the callbacks that
@@ -140,6 +141,11 @@ class MacLauncherSdk {
 
   Socket? _activeSocket;
 
+  /// Services with a start/recycle callback currently running. Scoped to the
+  /// SDK (not one connection): business mutations of the same service never
+  /// run concurrently, even across reconnects. status/logs are unaffected.
+  final _mutationGates = <String>{};
+
   Stream<SdkConnectionStatus> get states => _states.stream;
 
   CapabilitySet get capabilities => CapabilitySet(
@@ -225,6 +231,9 @@ class MacLauncherSdk {
     DateTime lastPong = DateTime.now();
     Timer? pingTimer;
     Timer? watchdog;
+    // Request rules are scoped to this connection: cached outcomes and
+    // in-flight reuse never leak into a later session.
+    final dedup = RequestDedup();
 
     late StreamSubscription sub;
     sub = decodeMessages(socket).listen(
@@ -244,7 +253,7 @@ class MacLauncherSdk {
               // Stream listen does not await async handlers. Observe failures
               // explicitly; callback completion must never escape the zone.
               unawaited(
-                _handleRequest(socket, message).catchError((Object _) {
+                _handleRequest(socket, message, dedup).catchError((Object _) {
                   socket.destroy();
                 }),
               );
@@ -312,45 +321,64 @@ class MacLauncherSdk {
   Future<void> _handleRequest(
     Socket socket,
     Map<String, Object?> message,
+    RequestDedup dedup,
   ) async {
     final id = message['id'];
-    Map<String, Object?> respond({Object? result, ProtocolError? error}) => {
+    Map<String, Object?> respond(RequestOutcome outcome) => {
       'type': 'response',
       'id': id,
-      if (error != null) 'error': error.toJson() else 'result': result,
+      if (outcome.error != null)
+        'error': outcome.error!.toJson()
+      else
+        'result': outcome.value,
     };
-    Map<String, Object?> response;
-    try {
-      final method = message['method'];
-      final serviceId = message['serviceId'];
-      final params = message['params'];
-      if (id is! String ||
-          id.isEmpty ||
-          method is! String ||
-          method.isEmpty ||
-          (serviceId != null && serviceId is! String) ||
-          (params != null && params is! Map<String, Object?>)) {
-        throw ProtocolError(ProtocolError.invalid, 'invalid request structure');
-      }
-      final result = await _dispatch(
-        method,
-        serviceId as String?,
-        params as Map<String, Object?>?,
+    RequestOutcome outcome;
+    final method = message['method'];
+    final serviceId = message['serviceId'];
+    final params = message['params'];
+    if (id is! String ||
+        id.isEmpty ||
+        method is! String ||
+        method.isEmpty ||
+        (serviceId != null && serviceId is! String) ||
+        (params != null && params is! Map<String, Object?>)) {
+      outcome = RequestOutcome.error(
+        ProtocolError(ProtocolError.invalid, 'invalid request structure'),
       );
-      response = respond(result: result);
-    } on ProtocolError catch (e) {
-      response = respond(error: e);
-    } catch (e) {
-      response = respond(error: ProtocolError(ProtocolError.failed, '$e'));
+    } else {
+      // Identical request ids reuse in-flight processing or replay the
+      // cached outcome; the business callback never runs twice for one id.
+      outcome = await dedup.run(
+        id,
+        () => _execute(
+          method,
+          serviceId as String?,
+          params as Map<String, Object?>?,
+        ),
+      );
     }
     // Application callbacks may outlive communication. They continue their
     // own work but must not reply into a disposed or replaced connection.
     if (!_disposed && identical(_activeSocket, socket)) {
       try {
-        writeMessage(socket, response);
+        writeMessage(socket, respond(outcome));
       } catch (_) {
         socket.destroy();
       }
+    }
+  }
+
+  Future<RequestOutcome> _execute(
+    String method,
+    String? serviceId,
+    Map<String, Object?>? params,
+  ) async {
+    try {
+      return RequestOutcome.result(await _dispatch(method, serviceId, params));
+    } on ProtocolError catch (e) {
+      return RequestOutcome.error(e);
+    } catch (e) {
+      return RequestOutcome.error(ProtocolError(ProtocolError.failed, '$e'));
     }
   }
 
@@ -380,7 +408,7 @@ class MacLauncherSdk {
               ProtocolError.unsupported,
               'start not supported',
             ));
-        await cb();
+        await _runExclusive(serviceId, cb);
         return const {};
       case kMethodRecycle:
         final cb =
@@ -389,7 +417,7 @@ class MacLauncherSdk {
               ProtocolError.unsupported,
               'recycle not supported',
             ));
-        await cb();
+        await _runExclusive(serviceId, cb);
         return const {};
       case kMethodStatus:
         final cb =
@@ -412,6 +440,23 @@ class MacLauncherSdk {
           ProtocolError.unsupported,
           'unknown method: $method',
         );
+    }
+  }
+
+  /// Runs one start/recycle callback under the service's mutation gate.
+  /// A second mutation for the same service fails fast with `busy` instead
+  /// of queueing; other services are unaffected.
+  Future<void> _runExclusive(
+    String serviceId,
+    Future<void> Function() callback,
+  ) async {
+    if (!_mutationGates.add(serviceId)) {
+      throw ProtocolError(ProtocolError.busy, 'service busy: $serviceId');
+    }
+    try {
+      await callback();
+    } finally {
+      _mutationGates.remove(serviceId);
     }
   }
 

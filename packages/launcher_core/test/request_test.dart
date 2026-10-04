@@ -7,6 +7,19 @@ import 'package:test/test.dart';
 
 import 'support.dart';
 
+/// Counts orchestrator invocations without ever launching anything.
+class _CountingOrchestrator extends LaunchOrchestrator {
+  _CountingOrchestrator({required super.server, required super.store});
+
+  var calls = 0;
+
+  @override
+  Future<LaunchResult> ensureEntryConnected(String projectId) async {
+    calls++;
+    return const LaunchUnavailable('counting double');
+  }
+}
+
 /// A controllable fake service behind the real SDK boundary.
 class _Probe {
   _Probe({this.startGate});
@@ -196,6 +209,26 @@ void main() {
     final outcome = await ops(server).start('proj-a', 'extra');
 
     expect(outcome, isA<OperationUnavailable>());
+  });
+
+  test('status and recycle never pull an application up', () async {
+    await bindServices(['svc']);
+    final server = await LauncherServer.start(layout: layout, bindings: store);
+    addTearDown(server.close);
+    final launcher = _CountingOrchestrator(server: server, store: store);
+    final operations = ServiceOperations(
+      server: server,
+      scope: BindingServiceScope(store),
+      timeout: const Duration(seconds: 2),
+      launcher: launcher,
+    );
+
+    await operations.status('proj-a', 'svc');
+    await operations.recycle('proj-a', 'svc');
+    expect(launcher.calls, 0);
+
+    await operations.start('proj-a', 'svc');
+    expect(launcher.calls, 1);
   });
 
   test('multiple services are operated independently', () async {
