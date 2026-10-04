@@ -214,14 +214,19 @@ void main() {
         // Let the real socket round-trip finish.
         await settle(tester);
 
-        expect(find.textContaining('第一行日志', findRichText: true),
-            findsOneWidget);
-        expect(find.textContaining('第二行日志', findRichText: true),
-            findsOneWidget);
-        expect(find.textContaining('无原始时间', findRichText: true),
-            findsOneWidget);
-        expect(find.textContaining('分流未知', findRichText: true),
-            findsOneWidget);
+        expect(
+          find.textContaining('第一行日志', findRichText: true),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('第二行日志', findRichText: true),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('无原始时间', findRichText: true),
+          findsOneWidget,
+        );
+        expect(find.textContaining('分流未知', findRichText: true), findsOneWidget);
         expect(find.textContaining('未提供实例范围'), findsOneWidget);
         expect(logQueries, greaterThanOrEqualTo(1));
 
