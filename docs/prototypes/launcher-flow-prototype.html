@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MacLauncher · 操作路径原型</title>
+<style>
+  :root{font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#202833;background:#f4f6f8;--blue:#2563eb;--line:#dce2e8;--muted:#657180}
+  *{box-sizing:border-box}body{margin:0}button,input,select,textarea{font:inherit}button{cursor:pointer;background:white;color:inherit;border:1px solid var(--line);border-radius:7px;padding:7px 12px}button:hover{border-color:var(--blue)}button.primary{background:var(--blue);color:white;border-color:var(--blue)}button:disabled{cursor:default;opacity:.5}button.small{padding:4px 9px;font-size:13px}button.danger{color:#b42318}input[type=checkbox]{accent-color:var(--blue)}select,input[type=text],textarea{border:1px solid var(--line);border-radius:6px;padding:8px;background:white}textarea{width:100%;height:250px;font:13px/1.5 ui-monospace,monospace}
+  h1,h2,h3,p{margin:0}h1{font-size:25px}h2{font-size:17px}h3{font-size:15px}.muted{color:var(--muted)}.small{font-size:13px}.pill{display:inline-block;padding:2px 8px;border-radius:12px;background:#e9eef4;font-size:12px}.ok{background:#e3f4e8;color:#176638}.warn{background:#fff1d6;color:#8c5a00}.bad{background:#fde7e5;color:#ab3327}.flex{display:flex;align-items:center;gap:10px}.wrap{flex-wrap:wrap}.between{justify-content:space-between}.stack{display:grid;gap:12px;align-content:start}.card{background:white;border:1px solid var(--line);border-radius:10px;padding:18px}.row{padding:12px 0;border-top:1px solid #edf0f3}.row:first-child{border-top:0}.notice{border-left:3px solid var(--blue);background:#eef4ff;padding:11px 14px}.path{overflow-wrap:anywhere;font:12px ui-monospace,monospace;color:var(--muted)}
+  .topbar{position:relative;background:#e8edf2;border-bottom:1px solid #cbd3dc;min-height:42px;display:flex;align-items:center;justify-content:space-between;padding:5px 20px;gap:14px}.topbar button{border:0;background:transparent;padding:4px 9px}.topbar button.active{background:#d7e4ff}.tray-popup{position:absolute;z-index:3;right:20px;top:45px;width:390px;max-width:95vw;background:white;border:1px solid var(--line);box-shadow:0 10px 30px #25374c20;border-radius:10px;padding:15px}.tray-popup .row{padding:10px 0}
+  main{max-width:1240px;margin:auto;padding:26px 22px;display:grid;gap:18px}.layout{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(310px,1fr);gap:18px}.tabs{display:flex;gap:8px;flex-wrap:wrap}.tabs button.active{color:var(--blue);background:#edf3ff;border-color:var(--blue)}.steps{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}.step{font-size:12px;color:var(--muted);background:#f0f3f6;border-radius:6px;padding:5px 8px}.step.done{color:#176638;background:#e3f4e8}.step.current{color:var(--blue);background:#eaf1ff}dl{display:grid;grid-template-columns:105px 1fr;gap:6px 10px;margin:10px 0}dt{color:var(--muted)}dd{margin:0}pre.logs{margin:10px 0;max-height:210px;overflow:auto;background:#f3f5f7;padding:12px;border-radius:6px;white-space:pre-wrap;font:12px/1.7 ui-monospace,monospace}.records{max-height:230px;overflow:auto}.record{padding:7px 0;border-bottom:1px solid #edf0f3;font-size:13px}.record span{color:var(--muted);margin-right:6px}
+  dialog{border:1px solid var(--line);border-radius:10px;padding:22px;width:650px;max-width:94vw;box-shadow:0 20px 70px #20283330}dialog::backdrop{background:#20283330}.dialog-body{display:grid;gap:14px}.window{position:fixed;z-index:4;right:26px;bottom:25px;width:390px;max-width:92vw;box-shadow:0 12px 40px #20283330}.window-title{border-bottom:1px solid var(--line);padding-bottom:10px;margin-bottom:12px}.empty{padding:22px 0;color:var(--muted);text-align:center}@media(max-width:850px){.layout{grid-template-columns:1fr}main{padding:18px 12px}.topbar{padding:5px 10px}.tray-popup{right:10px}.window{right:10px;bottom:10px}}
+</style>
+<body>
+<div id="menubar" class="topbar"></div>
+<main>
+  <header class="stack">
+    <div class="flex between wrap"><h1>MacLauncher 操作路径原型</h1><span class="pill">一次性逻辑原型 · 最终产品使用 Flutter</span></div>
+    <p class="muted">验证从菜单栏绑定项目、发送启动/回收通知、查询状态和日志、打开原窗口，以及启动器失联后的入口归还。应用自己执行业务，启动器只通知与展示。</p>
+    <p class="small muted">所有项目、菜单栏、窗口、登录与通信均为内存模拟，不会打开真实应用或服务。双击本文件即可运行，刷新浏览器重置；时间与轮询用操作按钮模拟。</p>
+  </header>
+  <section id="guide" class="card"></section>
+  <div id="notice" class="notice" role="status" aria-live="polite"></div>
+  <div class="layout">
+    <div class="stack">
+      <section id="management" class="card"></section>
+      <section id="log-panel" class="card" hidden></section>
+    </div>
+    <aside class="stack">
+      <section id="state-panel" class="card"></section>
+      <section class="card stack">
+        <h2>自由操作</h2>
+        <p class="small muted">可以随时打断引导，观察不合法操作如何反馈。下方“应用动作”由模拟应用执行。</p>
+        <label>当前服务 <select id="target" style="width:100%;margin-top:6px"></select></label>
+        <div class="flex wrap">
+          <button data-act="START">发送启动通知</button><button data-act="RECYCLE">发送回收通知</button>
+          <button data-act="QUERY">刷新状态</button><button data-act="READ_LOGS">查询日志</button>
+          <button data-act="TIMEOUT">模拟请求超时</button><button data-act="EXPIRE">模拟状态过期</button>
+          <button data-act="DISCONNECT">模拟 SDK 断连</button><button data-act="RECONNECT">模拟 SDK 重连</button>
+          <button data-act="ROOT_EXIT">退出启动器</button><button data-act="ROOT_OPEN">重新打开启动器</button>
+          <button data-act="LOGIN">模拟下一次登录</button>
+        </div>
+        <h3>应用动作</h3>
+        <div class="flex wrap"><button data-act="APP_SUCCESS">应用回报成功</button><button data-act="APP_FAILURE">应用回报失败</button><button data-act="APP_READY">应用确认就绪</button><button data-act="APP_OPEN_WINDOW">应用自己打开窗口</button></div>
+        <label>模拟日志来源 <select id="log-mode"><option value="normal">有日志，原始时间与分流未知</option><option value="empty">读取成功，内容为空</option><option value="failed">读取失败</option><option value="unsupported">没有日志能力</option></select></label>
+      </section>
+      <section class="card"><div class="flex between"><h2>通知与反馈记录</h2><button class="small" data-act="CLEAR_RECORDS">清空记录</button></div><p class="small muted">检查是谁发出请求、谁完成操作。状态刷新不等于重新启动。</p><div id="records" class="records"></div></section>
+    </aside>
+  </div>
+</main>
+<dialog id="bind-dialog"><div class="dialog-body">
+  <div class="flex between"><h2>关联项目配置（模拟选择文件）</h2><button id="close-bind">关闭</button></div>
+  <label>示例项目 <select id="demo-config"><option value="web">本地工具示例 · 两项服务</option><option value="container">容器包装器示例 · 一项服务</option></select></label>
+  <label>配置路径 <input id="config-path" type="text" style="width:100%"></label>
+  <label>maclauncher.json <textarea id="config-content" spellcheck="false"></textarea></label>
+  <p class="small muted">这里选择的是示例内存配置，没有读取或写入真实项目文件。更改路径可体验同一身份的绑定冲突。</p>
+  <button class="primary" id="bind-submit">关联配置</button>
+</div></dialog>
+<dialog id="conflict-dialog"><div class="dialog-body"><h2>发现相同项目身份</h2><p id="conflict-copy"></p><div class="flex wrap"><button class="primary" data-act="MIGRATE">迁移原绑定</button><button data-act="COPY">作为新项目生成新 ID</button><button data-act="CANCEL_CONFLICT">取消</button></div><p class="small muted">新项目配置与应用需使用同一个新 ID。原型只在内存配置副本中模拟更新。</p></div></dialog>
+<dialog id="unbind-dialog"><div class="dialog-body"><h2>解除项目绑定</h2><p>取消该项目的登录启动通知，归还原菜单栏入口。应用已有业务和日志继续由它自己维护。</p><div class="flex"><button class="danger" data-act="UNBIND">保留运行并解除绑定</button><button id="cancel-unbind">取消</button></div></div></dialog>
+<div id="app-windows"></div>
+
+<script>
+// 纯内存模型：不访问 DOM、不执行进程、不读写文件，不是 SDK 实现。
+const Demo = (() => {
+  const manifests = {
+    web: {schemaVersion:1,project:{id:'demo-web',name:'本地工具示例'},application:{kind:'app',path:'./DemoWeb.app'},integration:{type:'sdk'},services:[{id:'web',name:'Web 服务'},{id:'worker',name:'任务服务'}]},
+    container: {schemaVersion:1,project:{id:'demo-container',name:'容器包装器示例'},application:{kind:'app',path:'./DemoContainer.app'},integration:{type:'sdk'},services:[{id:'container',name:'容器中的服务'}]}
+  };
+  const paths = {web:'/demo/web/maclauncher.json',container:'/demo/container/maclauncher.json'};
+  const scenarios = [
+    {id:'handoff',name:'接管与找回',text:'应用已经自行运行。关联后收起原入口；关原窗口、退出及重开启动器，业务与运行身份保持。',steps:[['关联示例配置','BIND_WEB'],['打开原项目窗口','OPEN_APP'],['关闭原项目窗口','CLOSE_APP'],['退出启动器','ROOT_EXIT'],['重新打开启动器','ROOT_OPEN']]},
+    {id:'autostart',name:'登录启动与回收',text:'启动器先发通知，应用回报结果后才刷新业务状态。回收当前运行保留下一次登录启动开关。',steps:[['关联示例配置','BIND_WEB'],['启用 Web 登录启动','AUTO_ON'],['模拟下一次登录','LOGIN'],['应用回报启动成功','APP_SUCCESS'],['应用确认就绪','APP_READY'],['发送回收通知','RECYCLE'],['应用回报已停止','APP_SUCCESS'],['再次模拟登录','LOGIN']]},
+    {id:'observation',name:'状态与日志',text:'运行中不等于就绪；日志空、不支持与读取失败分别显示。断连后状态未知，但应用业务继续。',steps:[['关联运行中的应用','BIND_WEB'],['查询已有日志','READ_LOGS'],['模拟日志读取失败','LOG_FAILED'],['模拟空日志','LOG_EMPTY'],['模拟没有日志能力','LOG_UNSUPPORTED'],['模拟 SDK 断连','DISCONNECT'],['模拟 SDK 重连','RECONNECT']]},
+    {id:'binding',name:'绑定与配置',text:'重复关联复用记录；同一身份换路径先做选择。配置无效只阻止新启动，解除绑定保留已有运行。',steps:[['关联示例配置','BIND_WEB'],['重复关联同一配置','BIND_WEB'],['从新路径关联相同身份','PATH_CONFLICT'],['选择迁移原绑定','MIGRATE'],['模拟配置无效','INVALIDATE'],['尝试发送启动通知','START'],['修复配置','REPAIR'],['保留运行并解除绑定','UNBIND']]}
+  ];
+  const clone = value => JSON.parse(JSON.stringify(value));
+  function makeApp(manifest,online=true) {
+    return {id:manifest.project.id,name:manifest.project.name,online,link:true,managed:false,trayVisible:true,restoreVisible:true,window:false,sequence:1,services:manifest.services.map((item,index)=>({id:item.id,name:item.name,state:index===0?'running':'stopped',ready:index===0?true:null,instanceId:index===0?manifest.project.id+'-run-1':null,pending:null,logMode:index===1?'unsupported':'normal',logs:index===0?[{instanceId:manifest.project.id+'-run-1',text:'应用已独立启动，等待连接启动器',timestamp:null,stream:'unknown'}]:[]}))};
+  }
+  function initial(scenario='handoff') {
+    const apps = [makeApp(manifests.web),makeApp(manifests.container)];
+    if(scenario==='autostart'){apps[0].online=false;const item=apps[0].services[0];item.state='stopped';item.ready=null;item.instanceId=null;item.logs=[];}
+    if(scenario==='observation')apps[0].services[0].ready=false;
+    return {root:{alive:true,main:false,popup:false,login:1},bindings:[],apps,target:{pid:'demo-web',sid:'web'},logView:null,clientPending:[],conflict:null,copySequence:0,scenario,step:0,records:[],notice:'点击菜单栏中的 MacLauncher，或按引导关联项目。示例数据只保存在内存。'};
+  }
+  function target(s){const a=s.apps.find(x=>x.id===s.target.pid);return {app:a,service:a?.services.find(x=>x.id===s.target.sid),binding:s.bindings.find(x=>x.id===s.target.pid)};}
+  function record(s,actor,text){s.notice=text;s.records.unshift({actor,text});s.records=s.records.slice(0,40);}
+  function release(app){app.managed=false;app.trayVisible=app.restoreVisible;}
+  function unknown(binding,reason){for(const view of Object.values(binding.views)){view.current='unknown';view.reason=reason;}}
+  function connect(s,binding,at){
+    const app=s.apps.find(x=>x.id===binding.id);
+    binding.connected=Boolean(s.root.alive&&app?.online&&app.link&&(binding.valid||binding.connected));
+    if(binding.connected){if(!app.managed)app.restoreVisible=app.trayVisible;app.managed=true;app.trayVisible=false;query(s,binding,at);}
+    else{if(app)release(app);unknown(binding,'应用未连接，当前业务状态未知');}
+  }
+  function query(s,binding,at){
+    const app=s.apps.find(x=>x.id===binding.id);
+    for(const item of binding.services){
+      const svc=app?.services.find(x=>x.id===item.id);const view=binding.views[item.id]||(binding.views[item.id]={current:'unknown',last:null,reason:''});
+      if(!s.root.alive||!binding.connected){view.current='unknown';view.reason='应用未连接，保留上次报告';continue;}
+      if(binding.expired){view.current='unknown';view.reason='观测已过期，等待新的状态结果';continue;}
+      if(!svc){view.current='unknown';view.reason='应用未登记此服务的状态能力';continue;}
+      view.last={state:svc.state,ready:svc.ready,instanceId:svc.instanceId,observedAt:at};view.current=svc.state;view.reason='';
+    }
+  }
+  function bind(s,candidate,at){
+    const old=s.bindings.find(x=>x.id===candidate.manifest.project.id);
+    if(old&&old.path!==candidate.path){s.conflict=candidate;record(s,'启动器','相同项目身份来自另一条路径，请选择迁移或新项目');return;}
+    if(old){old.name=candidate.manifest.project.name;old.services=clone(candidate.manifest.services);old.valid=true;old.config=clone(candidate.manifest);query(s,old,at);record(s,'启动器','复用现有绑定；没有重新启动应用或服务');return;}
+    const b={id:candidate.manifest.project.id,name:candidate.manifest.project.name,path:candidate.path,config:clone(candidate.manifest),services:clone(candidate.manifest.services),valid:true,connected:false,expired:false,auto:{},views:{}};
+    s.bindings.push(b);connect(s,b,at);s.target={pid:b.id,sid:b.services[0].id};record(s,'启动器',b.connected?'已关联，查询已有运行后由应用收起自身入口':'已关联，等待应用连接；不会把未连接当成已停止');
+  }
+  function send(s,method,at){
+    const {binding:b,app,service:svc}=target(s);
+    if(!s.root.alive||!b){record(s,'启动器','没有可操作的项目绑定，请先打开启动器并关联配置');return;}
+    if(method==='start'&&!b.valid){record(s,'启动器','配置无效，暂停发送新的启动通知；已有业务继续运行');return;}
+    if(!b.connected&&method==='start'&&b.config.application?.path){
+      if(!app){record(s,'启动器','模拟请求打开应用入口，等待使用相同身份的 SDK 登记；配置本身不生成控制能力');return;}
+      app.online=true;connect(s,b,at);
+      record(s,'启动器','模拟打开应用入口并连接；打开入口本身不代表业务已启动');
+    }
+    const live=target(s);
+    if(!b.connected||!live.service){record(s,'启动器','应用未连接或未提供该控制能力，未发送操作');return;}
+    if(live.service.pending||s.clientPending.some(x=>x.pid===b.id&&x.sid===live.service.id)){record(s,'应用','仍在处理此服务的上一条请求，返回忙；没有重复执行业务');return;}
+    live.service.pending=method;s.clientPending.push({pid:b.id,sid:live.service.id,method});record(s,'启动器',`已发送${method==='start'?'启动':'回收'}通知，等待应用结果；业务状态尚未由此改变`);
+  }
+  function readLogs(s,at){
+    const {binding:b,service:svc}=target(s);const old=s.logView?.pid===s.target.pid&&s.logView.sid===s.target.sid?s.logView.batch:null;
+    s.logView={pid:s.target.pid,sid:s.target.sid,batch:old,kind:'failed',message:'应用未连接，当前日志读取不可用'};
+    if(!s.root.alive||!b?.connected||!svc)return;
+    if(svc.logMode==='unsupported'){s.logView.kind='unsupported';s.logView.message='应用未提供日志能力';return;}
+    if(svc.logMode==='failed'){s.logView.message='应用读取日志来源失败；上次内容只作历史提示';return;}
+    s.logView.kind='ok';s.logView.message=svc.logMode==='empty'?'当前可读范围暂无日志':'应用提供的最近一批日志';
+    s.logView.batch={instanceId:svc.instanceId,observedAt:at,truncated:null,entries:svc.logMode==='empty'?[]:svc.logs.filter(x=>x.instanceId===svc.instanceId).slice(-200)};
+  }
+  function reduce(previous,action){
+    if(action.type==='SCENARIO'||action.type==='RESET')return initial(action.scenario||previous.scenario);
+    const s=clone(previous);const at=action.at;let {app,service,binding}=target(s);
+    switch(action.type){
+      case 'TARGET':if(s.target.pid!==action.target.pid||s.target.sid!==action.target.sid)s.logView=null;s.target=action.target;break;
+      case 'MAIN':if(s.root.alive){s.root.main=!s.root.main;s.root.popup=false;}else record(s,'启动器','启动器已经退出，请先重新打开');break;
+      case 'POPUP':if(s.root.alive)s.root.popup=!s.root.popup;break;
+      case 'BIND_WEB':bind(s,{manifest:clone(manifests.web),path:paths.web},at);break;
+      case 'BIND':{
+        let cfg;try{cfg=JSON.parse(action.content);}catch{record(s,'启动器','配置无法读取：JSON 格式错误，没有建立绑定');break;}
+        const valid=cfg?.schemaVersion===1&&typeof cfg.project?.id==='string'&&cfg.project.id&&typeof cfg.project.name==='string'&&Array.isArray(cfg.services)&&cfg.services.length&&cfg.services.every(x=>typeof x?.id==='string'&&x.id&&typeof x.name==='string')&&new Set(cfg.services.map(x=>x.id)).size===cfg.services.length&&action.path.trim();
+        if(!valid){record(s,'启动器','配置缺少有效项目/服务标识，或服务标识重复，没有建立绑定');break;}bind(s,{manifest:cfg,path:action.path.trim()},at);break;
+      }
+      case 'PATH_CONFLICT':bind(s,{manifest:clone(manifests.web),path:'/demo/moved-web/maclauncher.json'},at);break;
+      case 'MIGRATE':if(s.conflict){const c=s.conflict;const b=s.bindings.find(x=>x.id===c.manifest.project.id);b.path=c.path;b.config=clone(c.manifest);b.valid=true;s.conflict=null;record(s,'启动器','已迁移原绑定；身份、登录偏好与已有运行保持');}else record(s,'启动器','当前没有待处理的路径冲突');break;
+      case 'COPY':if(s.conflict){const c=s.conflict;const newId=c.manifest.project.id+'-copy-'+(++s.copySequence);c.manifest.project.id=newId;c.manifest.project.name+='（副本）';s.conflict=null;bind(s,c,at);record(s,'启动器','新配置副本使用 '+newId+'，仅保存在原型内存；等待相同身份的应用连接');}break;
+      case 'CANCEL_CONFLICT':s.conflict=null;record(s,'启动器','已取消，保留原绑定与运行');break;
+      case 'AUTO':if(binding){binding.auto[s.target.sid]=action.value;record(s,'启动器',action.value?'启用下一次登录的启动通知，当前业务不变':'关闭未来登录的启动通知，当前业务不变');}break;
+      case 'AUTO_ON':if(binding){binding.auto[s.target.sid]=true;record(s,'启动器','已启用 Web 登录启动通知，当前业务不变');}break;
+      case 'LOGIN':{
+        s.root.alive=true;s.root.login++;for(const b of s.bindings)connect(s,b,at);
+        const oldTarget=clone(s.target);let sent=0;for(const b of s.bindings)for(const v of b.services)if(b.auto[v.id]){s.target={pid:b.id,sid:v.id};send(s,'start',at);if(target(s).service?.pending==='start')sent++;}s.target=oldTarget;
+        if(!sent)record(s,'启动器','此次登录没有可发送的启动通知；不停止已有业务');break;
+      }
+      case 'START':send(s,'start',at);break;
+      case 'RECYCLE':send(s,'recycle',at);break;
+      case 'APP_SUCCESS':case 'APP_FAILURE':{
+        if(!service?.pending){record(s,'应用','当前没有待完成请求，业务保持');break;}
+        const method=service.pending;service.pending=null;
+        if(action.type==='APP_FAILURE'){service.state='failed';service.ready=null;record(s,'应用','应用报告业务操作失败；由应用提供真实失败状态');}
+        else if(method==='recycle'){service.state='stopped';service.ready=null;record(s,'应用','应用回报已停止，下一次登录启动开关保持');}
+        else{if(service.state!=='running'){service.instanceId=app.id+'-run-'+(++app.sequence);service.state='running';service.ready=false;}service.logs.push({instanceId:service.instanceId,text:'应用处理启动请求，当前业务运行中',timestamp:null,stream:'unknown'});record(s,'应用',service.ready?'应用复用已有运行，未创建第二份业务':'应用回报运行中，尚未就绪');}
+        s.clientPending=s.clientPending.filter(x=>x.pid!==app.id||x.sid!==service.id);
+        if(binding?.connected){query(s,binding,at);if(s.logView?.pid===app.id&&s.logView.sid===service.id)readLogs(s,at);}break;
+      }
+      case 'APP_READY':if(service?.state==='running'){service.ready=true;record(s,'应用','应用确认自身业务已就绪');if(binding?.connected)query(s,binding,at);}else record(s,'应用','业务尚未运行，不能确认已就绪');break;
+      case 'QUERY':for(const b of s.bindings){b.expired=false;query(s,b,at);}record(s,'启动器','仅查询应用当前状态，没有发送启动或回收通知');break;
+      case 'TIMEOUT':if(s.clientPending.some(x=>x.pid===s.target.pid&&x.sid===s.target.sid)){s.clientPending=s.clientPending.filter(x=>x.pid!==s.target.pid||x.sid!==s.target.sid);record(s,'启动器','请求结果未知，应用可能仍在处理；先查询状态，不自动重发');}else record(s,'启动器','此服务没有等待中的请求');break;
+      case 'EXPIRE':if(binding){binding.expired=true;unknown(binding,'状态观测已过期，保留上次报告');record(s,'启动器','观测过期显示未知；没有停止或重新启动业务');}break;
+      case 'DISCONNECT':if(app){app.link=false;release(app);if(binding){binding.connected=false;unknown(binding,'SDK 已断连，业务状态未知');}s.clientPending=s.clientPending.filter(x=>x.pid!==app.id);if(s.logView?.pid===app.id){s.logView.kind='failed';s.logView.message='SDK 已断连，此为上次成功内容';}record(s,'应用 SDK','连接失效，应用恢复自己的入口；业务保持');}break;
+      case 'RECONNECT':if(app){app.link=true;if(binding){binding.expired=false;connect(s,binding,at);if(binding.connected&&s.logView?.pid===app.id)readLogs(s,at);}record(s,'启动器',binding?.connected?'重新连接后查询状态与打开的日志面板，没有补发启动或回收':'尚未建立已绑定应用的连接，业务仍由应用自己维护');}break;
+      case 'ROOT_EXIT':s.root.alive=false;s.root.main=false;s.root.popup=false;s.logView=null;s.clientPending=[];for(const a of s.apps)release(a);for(const b of s.bindings){b.connected=false;unknown(b,'启动器退出，上次状态仅作历史提示');}record(s,'应用 SDK','启动器退出，应用自行归还入口；业务与日志保持');break;
+      case 'ROOT_OPEN':s.root.alive=true;for(const b of s.bindings){b.expired=false;connect(s,b,at);}record(s,'启动器','重新打开，仅找回应用报告的已有运行，没有再发送启动通知');break;
+      case 'OPEN_APP':if(app?.online&&binding?.connected){app.window=true;record(s,'应用','收到打开窗口通知，打开原项目窗口；业务状态不变');}else record(s,'启动器','应用未连接，无法发送打开窗口通知');break;
+      case 'APP_OPEN_WINDOW':if(app?.online){app.window=true;record(s,'应用','应用通过自身入口打开原窗口；业务状态不变');}else record(s,'应用','此示例应用尚未打开');break;
+      case 'CLOSE_APP':if(app){app.window=false;record(s,'应用','原项目窗口已关闭，业务继续运行');}break;
+      case 'READ_LOGS':readLogs(s,at);record(s,'启动器',s.logView.message);break;
+      case 'CLOSE_LOGS':s.logView=null;record(s,'启动器','关闭日志面板，停止此面板的读取；应用日志保持');break;
+      case 'LOG_MODE':case 'LOG_FAILED':case 'LOG_EMPTY':case 'LOG_UNSUPPORTED':if(service){service.logMode=action.value||({'LOG_FAILED':'failed','LOG_EMPTY':'empty','LOG_UNSUPPORTED':'unsupported'}[action.type]);readLogs(s,at);record(s,'应用',s.logView.message);}break;
+      case 'INVALIDATE':if(binding){binding.valid=false;record(s,'启动器','配置无效：暂停新的启动通知，保留绑定、已有运行与合法连接的只读查询');}break;
+      case 'REPAIR':if(binding){binding.valid=true;binding.expired=false;connect(s,binding,at);record(s,'启动器','配置已修复，恢复新启动资格；没有重启或回收业务');}break;
+      case 'UNBIND':if(binding){if(app)release(app);s.bindings=s.bindings.filter(x=>x.id!==binding.id);s.clientPending=s.clientPending.filter(x=>x.pid!==binding.id);s.logView=null;record(s,'启动器','解除绑定并取消登录通知，归还入口；应用业务和日志继续保留');}else record(s,'启动器','当前没有可解除的绑定');break;
+      case 'CLEAR_RECORDS':s.records=[];break;
+    }
+    if(action.guide)s.step++;
+    return s;
+  }
+  return {initial,reduce,manifests,paths,scenarios,target};
+})();
+</script>
+<script>
+// 一次性页面：将领域动作传给模型，再展示各方状态。
+let state=Demo.initial();
+const $=id=>document.getElementById(id);
+const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const labels={running:'运行中',stopped:'已停止',starting:'启动中',stopping:'回收中',failed:'应用报告失败',unknown:'未知'};
+const time=value=>value?new Date(value).toLocaleTimeString('zh-CN',{hour12:false}):'未提供';
+const act=(type,extra={})=>{state=Demo.reduce(state,{type,at:new Date().toISOString(),...extra});render();};
+function options(){const items=state.apps.flatMap(a=>a.services.map(v=>({pid:a.id,sid:v.id,name:a.name+' / '+v.name})));for(const b of state.bindings)for(const v of b.services)if(!items.some(x=>x.pid===b.id&&x.sid===v.id))items.push({pid:b.id,sid:v.id,name:b.name+' / '+v.name});return items;}
+function pill(value){return `<span class="pill ${value==='running'?'ok':value==='unknown'?'warn':value==='failed'?'bad':''}">${esc(labels[value]||value)}</span>`;}
+function serviceRow(b,v,compact=false){
+  const view=b.views[v.id]||{current:'unknown',last:null,reason:'等待状态查询'};const own=state.apps.find(a=>a.id===b.id)?.services.find(x=>x.id===v.id);const pending=state.clientPending.some(x=>x.pid===b.id&&x.sid===v.id);
+  const ready=view.current==='running'?(view.last?.ready===null?'就绪未知':view.last?.ready?'已就绪':'未就绪'):'';
+  return `<div class="row"><div class="flex between wrap"><strong>${esc(v.name)}</strong><div class="flex">${pill(view.current)}${ready?`<span class="small muted">${ready}</span>`:''}</div></div>
+    ${view.reason?`<p class="small muted">${esc(view.reason)}${view.last?`；上次报告 ${esc(labels[view.last.state])} · ${time(view.last.observedAt)}`:''}</p>`:''}
+    ${!compact?`<p class="small muted">运行身份：${esc(view.last?.instanceId||'应用未提供')} · 观测：${time(view.last?.observedAt)}</p>`:''}
+    <div class="flex between wrap" style="margin-top:8px"><label class="small"><input type="checkbox" data-auto data-pid="${esc(b.id)}" data-sid="${esc(v.id)}" ${b.auto[v.id]?'checked':''}> 登录启动</label><div class="flex wrap"><button class="small" data-act="START" data-pid="${esc(b.id)}" data-sid="${esc(v.id)}" ${pending||!b.valid?'disabled':''}>启动</button><button class="small" data-act="RECYCLE" data-pid="${esc(b.id)}" data-sid="${esc(v.id)}" ${pending||!b.connected?'disabled':''}>回收</button><button class="small" data-act="READ_LOGS" data-pid="${esc(b.id)}" data-sid="${esc(v.id)}">日志</button></div></div>${pending?'<p class="small" style="color:var(--blue);margin-top:6px">已发送通知，等待应用结果</p>':''}
+    ${own?.logMode==='unsupported'&&!compact?'<p class="small muted">应用未提供日志能力</p>':''}</div>`;
+}
+function render(){
+  const scenario=Demo.scenarios.find(x=>x.id===state.scenario);const next=scenario.steps[state.step];const current=Demo.target(state);
+  $('menubar').innerHTML=`<span class="small muted">菜单栏（模拟）</span><div class="flex">${state.apps.filter(a=>a.online&&a.trayVisible).map(a=>`<button data-app="${esc(a.id)}" title="打开 ${esc(a.name)} 的原窗口">${esc(a.name)} ◦</button>`).join('')}${state.root.alive?`<button id="launcher-tray" class="${state.root.popup?'active':''}" data-act="POPUP">▣ MacLauncher</button>`:'<span class="small muted">启动器已退出</span>'}</div>${state.root.popup&&state.root.alive?`<div class="tray-popup"><div class="flex between"><strong>MacLauncher</strong><button class="small" data-act="MAIN">${state.root.main?'关闭管理窗口':'打开项目管理'}</button></div>${state.bindings.length?state.bindings.map(b=>`<h3 style="margin-top:14px">${esc(b.name)} <span class="pill ${b.connected?'ok':'warn'}">${b.connected?'已连接':'未连接'}</span></h3>${b.services.map(v=>serviceRow(b,v,true)).join('')}`).join(''):'<p class="empty">还没有关联项目</p>'}<div class="flex wrap" style="margin-top:12px"><button data-bind class="primary">关联项目配置</button><button data-act="ROOT_EXIT">退出启动器</button></div></div>`:''}`;
+  $('guide').innerHTML=`<div class="flex between wrap"><h2>引导场景</h2><button class="small" data-act="RESET">重置当前场景</button></div><div class="tabs" style="margin:12px 0">${Demo.scenarios.map(x=>`<button data-scenario="${x.id}" class="${x.id===state.scenario?'active':''}">${x.name}</button>`).join('')}</div><p>${esc(scenario.text)}</p><div class="steps">${scenario.steps.map((v,i)=>`<span class="step ${i<state.step?'done':i===state.step?'current':''}">${i<state.step?'✓':i+1} ${esc(v[0])}</span>`).join('')}</div>${next?`<button id="guide-next" class="primary">下一步：${esc(next[0])}</button>`:'<span class="pill ok">本场景已走完，可自由操作或重置</span>'}`;
+  $('notice').textContent=state.notice;
+  $('management').innerHTML=`<div class="flex between wrap"><h2>${state.root.main?'项目管理窗口（模拟）':'项目管理窗口未打开'}</h2><div class="flex"><button data-act="MAIN">${state.root.main?'关闭管理窗口':'打开管理窗口'}</button><button data-bind>关联配置</button></div></div>${state.root.main?state.bindings.length?state.bindings.map(b=>`<div style="margin-top:20px"><div class="flex between wrap"><div><h3>${esc(b.name)} <span class="pill ${b.connected?'ok':'warn'}">${b.connected?'应用已连接':'应用未连接'}</span> ${!b.valid?'<span class="pill bad">配置无效 · 暂停新启动</span>':''}</h3><p class="path">${esc(b.path)}</p></div><div class="flex"><button class="small" data-open-project="${esc(b.id)}">原窗口</button><button class="small danger" data-unbind-project="${esc(b.id)}">解除绑定</button></div></div>${b.services.map(v=>serviceRow(b,v)).join('')}</div>`).join(''):'<p class="empty">选择项目目录中的 maclauncher.json 来关联项目</p>':'<p class="muted" style="margin-top:12px">默认从顶部 MacLauncher 菜单操作。关闭管理窗口不退出启动器，也不回收业务。</p>'}`;
+  $('state-panel').innerHTML=`<h2>原型观察区</h2><p class="small muted">模拟应用的实际状态与启动器观测分开，供验证；正式界面只显示应用可查询的结果。</p><dl><dt>启动器</dt><dd>${state.root.alive?'菜单栏在线':'已退出'}</dd><dt>主窗口</dt><dd>${state.root.main?'打开':'关闭'}</dd><dt>项目绑定</dt><dd>${state.bindings.length} 条</dd><dt>模拟登录</dt><dd>第 ${state.root.login} 次</dd><dt>等待结果</dt><dd>${state.clientPending.length} 项服务</dd></dl>${state.apps.map(a=>`<div class="row"><strong>${esc(a.name)}</strong><dl><dt>原入口</dt><dd>${a.trayVisible?'显示':'临时收起'}</dd><dt>原窗口</dt><dd>${a.window?'打开':'关闭'}</dd><dt>应用连接</dt><dd>${state.bindings.find(b=>b.id===a.id)?.connected?'与启动器连接':a.online?'独立运行':'应用未打开'}</dd></dl>${a.services.map(v=>{const b=state.bindings.find(x=>x.id===a.id);return `<p class="small"><strong>${esc(v.name)}</strong> · 应用实际：${esc(labels[v.state])}<br>启动器观测：${b?esc(labels[b.views[v.id]?.current]||'未知'):'尚未绑定'} · 登录启动：${b?.auto[v.id]?'开启':'关闭'}<br><span class="muted">${esc(v.instanceId||'暂无运行身份')}${v.pending?' · 应用尚在处理请求':''}</span></p>`;}).join('')}</div>`).join('')}`;
+  const choices=options();$('target').innerHTML=choices.map((x,i)=>`<option value="${i}" ${x.pid===state.target.pid&&x.sid===state.target.sid?'selected':''}>${esc(x.name)}</option>`).join('');$('log-mode').value=current.service?.logMode||'normal';
+  $('records').innerHTML=state.records.length?state.records.map(x=>`<div class="record"><span>${esc(x.actor)}</span>${esc(x.text)}</div>`).join(''):'<p class="small muted" style="margin-top:12px">还没有操作记录</p>';
+  $('log-panel').hidden=!state.logView; if(state.logView){const view=state.logView;const batch=view.batch;$('log-panel').innerHTML=`<div class="flex between"><h2>日志查询</h2><button data-act="CLOSE_LOGS">关闭日志面板</button></div><p style="margin-top:10px">${esc(view.message)}</p>${batch?`<p class="small muted">${view.kind==='ok'?'本次内容':'上次成功内容'} · 读取：${time(batch.observedAt)} · 最近至多 200 条<br>实例范围：${esc(batch.instanceId||'应用未提供实例范围')} · 历史完整性未知<br>条目的原始写入时间和分流未提供，没有补造。</p><pre class="logs">${esc(batch.entries.map(x=>x.text).join('\n')||'（暂无内容）')}</pre>`:''}<p class="small muted">原始日志由应用保留；此面板只显示应用提供的当前批次。</p>`;}
+  $('app-windows').innerHTML=state.apps.filter(a=>a.window).map(a=>`<section class="card window"><div class="flex between window-title"><strong>${esc(a.name)} · 原窗口（模拟）</strong><button data-close-project="${esc(a.id)}">关闭窗口</button></div><p class="muted small">这是应用原有窗口，业务由它自己维护。菜单栏是否接管不改变本窗口身份。</p>${a.services.map(v=>`<div class="row"><strong>${esc(v.name)}</strong> ${pill(v.state)}<p class="small muted">${esc(v.instanceId||'暂无运行身份')}</p></div>`).join('')}</section>`).join('');
+  const conflict=$('conflict-dialog');if(state.conflict){$('conflict-copy').textContent='新路径：'+state.conflict.path+'。原身份已有关联，不同时建立两条相同身份的绑定。';if(!conflict.open)conflict.showModal();}else if(conflict.open)conflict.close();
+}
+function fillConfig(){const key=$('demo-config').value;$('config-path').value=Demo.paths[key];$('config-content').value=JSON.stringify(Demo.manifests[key],null,2);}
+document.addEventListener('click',event=>{
+  const button=event.target.closest('button');if(!button)return;
+  if(button.dataset.scenario){act('SCENARIO',{scenario:button.dataset.scenario});return;}
+  if(button.id==='guide-next'){const scenario=Demo.scenarios.find(x=>x.id===state.scenario);const next=scenario.steps[state.step];if(next)act(next[1],{guide:true});return;}
+  if(button.hasAttribute('data-bind')){fillConfig();$('bind-dialog').showModal();return;}
+  if(button.id==='close-bind'){$('bind-dialog').close();return;}
+  if(button.id==='bind-submit'){$('bind-dialog').close();act('BIND',{content:$('config-content').value,path:$('config-path').value});return;}
+  if(button.id==='cancel-unbind'){$('unbind-dialog').close();return;}
+  const project=button.dataset.openProject||button.dataset.app||button.dataset.closeProject||button.dataset.unbindProject;
+  if(project){const a=state.apps.find(x=>x.id===project);const b=state.bindings.find(x=>x.id===project);act('TARGET',{target:{pid:project,sid:(a?.services||b.services)[0].id}});if(button.dataset.unbindProject){$('unbind-dialog').showModal();return;}act(button.dataset.closeProject?'CLOSE_APP':button.dataset.app?'APP_OPEN_WINDOW':'OPEN_APP');return;}
+  if(button.dataset.act){if(button.dataset.pid)act('TARGET',{target:{pid:button.dataset.pid,sid:button.dataset.sid}});if(button.dataset.act==='UNBIND'&&$('unbind-dialog').open)$('unbind-dialog').close();const scenario=Demo.scenarios.find(x=>x.id===state.scenario);const resolvesGuide=state.conflict&&['MIGRATE','COPY'].includes(button.dataset.act)&&scenario.steps[state.step]?.[1]==='MIGRATE';act(button.dataset.act,{guide:Boolean(resolvesGuide)});}
+});
+document.addEventListener('change',event=>{if(event.target.id==='demo-config')fillConfig();if(event.target.id==='target'){const item=options()[Number(event.target.value)];act('TARGET',{target:{pid:item.pid,sid:item.sid}});}if(event.target.id==='log-mode')act('LOG_MODE',{value:event.target.value});if(event.target.hasAttribute('data-auto')){act('TARGET',{target:{pid:event.target.dataset.pid,sid:event.target.dataset.sid}});act('AUTO',{value:event.target.checked});}});
+render();
+</script>
+</body>
+</html>
