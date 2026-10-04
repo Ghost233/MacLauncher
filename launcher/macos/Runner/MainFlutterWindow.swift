@@ -27,25 +27,36 @@ class MainFlutterWindow: NSWindow {
         panel.message = "选择项目目录中的 maclauncher.json"
         result(panel.runModal() == .OK ? panel.url?.path : nil)
       case "loginItemStatus":
-        switch SMAppService.mainApp.status {
-        case .enabled: result("enabled")
-        case .requiresApproval: result("requiresApproval")
-        case .notFound: result("notFound")
-        default: result("notRegistered")
+        if #available(macOS 13.0, *) {
+          switch SMAppService.mainApp.status {
+          case .enabled: result("enabled")
+          case .requiresApproval: result("requiresApproval")
+          case .notFound: result("notFound")
+          default: result("notRegistered")
+          }
+        } else {
+          result("notFound")
         }
       case "setLoginItemEnabled":
-        let enable = (call.arguments as? Bool) ?? false
-        do {
-          if enable {
-            try SMAppService.mainApp.register()
-          } else {
-            try SMAppService.mainApp.unregister()
+        if #available(macOS 13.0, *) {
+          let enable = (call.arguments as? Bool) ?? false
+          do {
+            if enable {
+              try SMAppService.mainApp.register()
+            } else {
+              try SMAppService.mainApp.unregister()
+            }
+            result(nil)
+          } catch {
+            result(FlutterError(
+              code: "login-item",
+              message: error.localizedDescription,
+              details: nil))
           }
-          result(nil)
-        } catch {
+        } else {
           result(FlutterError(
             code: "login-item",
-            message: error.localizedDescription,
+            message: "登录项需要 macOS 13 或更高版本",
             details: nil))
         }
       default:
