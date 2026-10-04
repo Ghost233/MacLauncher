@@ -1,0 +1,14 @@
+flowchart TD
+  Query["启动器<br/>只读查询<br/>状态 / 日志"] --> SDK["项目 SDK<br/>调用应用回调"]
+  SDK --> App["独立应用<br/>读取自身状态<br/>与已有日志"]
+  App -->|"成功"| Display["展示真实快照<br/>注明观测时间<br/>与日志范围"]
+  SDK -->|"未连接 / 未提供能力"| Unknown["未知 / 不支持<br/>上次数据<br/>仅作历史提示"]
+  App -->|"读取失败"| Unknown
+  Display --> Owner["应用自己负责<br/>业务运行<br/>与日志保留"]
+  Unknown --> Owner
+  classDef launcher fill:#dbeafe,stroke:#2563eb,color:#172554;
+  classDef application fill:#dcfce7,stroke:#16a34a,color:#14532d;
+  classDef unknown fill:#fef3c7,stroke:#d97706,color:#78350f;
+  class Query,Display launcher;
+  class SDK,App,Owner application;
+  class Unknown unknown;

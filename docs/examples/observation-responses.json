@@ -1,0 +1,72 @@
+{
+  "runningButNotReady": {
+    "type": "response",
+    "id": "example-status-1",
+    "ok": true,
+    "data": {
+      "state": "running",
+      "instanceId": "example-web-run-1",
+      "ready": false,
+      "observedAt": "2026-10-04T13:00:00Z",
+      "message": "服务仍在初始化"
+    }
+  },
+  "stateUnknown": {
+    "type": "response",
+    "id": "example-status-2",
+    "ok": true,
+    "data": {
+      "state": "unknown",
+      "instanceId": null,
+      "ready": null,
+      "observedAt": "2026-10-04T13:00:00Z",
+      "message": "应用暂时无法核验业务状态"
+    }
+  },
+  "logBatch": {
+    "type": "response",
+    "id": "example-logs-1",
+    "ok": true,
+    "data": {
+      "instanceId": "example-web-run-1",
+      "entries": [
+        {
+          "text": "server initializing",
+          "timestamp": null,
+          "stream": "unknown"
+        }
+      ],
+      "truncated": true,
+      "observedAt": "2026-10-04T13:00:02Z"
+    }
+  },
+  "emptyLogs": {
+    "type": "response",
+    "id": "example-logs-2",
+    "ok": true,
+    "data": {
+      "instanceId": null,
+      "entries": [],
+      "truncated": false,
+      "observedAt": "2026-10-04T13:00:02Z"
+    }
+  },
+  "logsNotSupported": {
+    "type": "response",
+    "id": "example-logs-3",
+    "ok": false,
+    "error": {
+      "code": "unsupported",
+      "message": "应用未提供日志回调"
+    }
+  },
+  "logsReadFailed": {
+    "type": "response",
+    "id": "example-logs-4",
+    "ok": false,
+    "error": {
+      "code": "failed",
+      "message": "应用无法读取自己的日志来源"
+    }
+  }
+}
