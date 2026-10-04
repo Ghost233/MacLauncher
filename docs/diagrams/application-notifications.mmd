@@ -1,0 +1,7 @@
+flowchart LR
+  Launcher["启动器<br/>自身登录启动<br/>通知与展示"] -->|"SDK：启动 / 回收 / 查询"| Application["独立应用<br/>自行启动与回收<br/>提供状态与日志<br/>管理自己的菜单栏"]
+  Application -->|"SDK：结果 / 状态 / 日志"| Launcher
+  classDef launcher fill:#dbeafe,stroke:#2563eb,color:#172554;
+  classDef application fill:#dcfce7,stroke:#16a34a,color:#14532d;
+  class Launcher launcher;
+  class Application application;
