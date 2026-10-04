@@ -1,0 +1,23 @@
+name: maclauncher
+description: "MacLauncher: personal menu-bar launcher for standalone projects."
+publish_to: 'none'
+version: 1.0.0+1
+
+resolution: workspace
+
+environment:
+  sdk: ^3.13.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  launcher_core: ^0.1.0
+  maclauncher_sdk: ^0.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

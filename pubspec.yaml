@@ -1,0 +1,14 @@
+name: maclauncher_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+
+workspace:
+  - packages/maclauncher_sdk
+  - packages/launcher_core
+  - example/minimal_app
+  - launcher
+
+dev_dependencies:
+  test: ^1.25.0

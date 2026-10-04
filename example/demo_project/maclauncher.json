@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "project": {
+    "id": "demo-project",
+    "name": "演示项目"
+  },
+  "services": [
+    {
+      "id": "demo",
+      "name": "演示服务"
+    }
+  ],
+  "entry": {
+    "kind": "executable",
+    "program": "../minimal_app/build/minimal_app",
+    "args": ["demo-project"],
+    "workingDirectory": "."
+  },
+  "integration": {
+    "type": "sdk"
+  }
+}

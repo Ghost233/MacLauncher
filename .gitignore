@@ -1,0 +1,5 @@
+.dart_tool/
+build/
+.scratch/
+.DS_Store
+example/minimal_app/build/
