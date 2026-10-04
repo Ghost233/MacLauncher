@@ -52,6 +52,9 @@ void main() {
         svc.methods,
         containsAll([kMethodStart, kMethodRecycle, kMethodStatus, kMethodLogs]),
       );
+      // Server-side activation precedes the welcome round-trip; wait for the
+      // client to process it before asserting client-side state.
+      await until(() => sdk.launcherSessionId != null);
       expect(sdk.launcherSessionId, isNotNull);
     },
   );
