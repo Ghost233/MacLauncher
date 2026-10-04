@@ -68,6 +68,37 @@ class BindingStore implements BindingLookup {
 
   List<ProjectBinding> get bindings => List.unmodifiable(_bindings);
 
+  /// Canonicalizes a manifest path for identity and path comparison.
+  static String canonicalPath(String path) => _canonical(path);
+
+  /// Low-level insert used by the association flow. Enforces the core
+  /// invariants: no two bindings share a project identity, and no two
+  /// bindings share a canonical manifest path. Throws [StateError] on any
+  /// violation instead of silently duplicating.
+  Future<ProjectBinding> insert(ProjectBinding binding) async {
+    if (byProjectId(binding.projectId) != null) {
+      throw StateError('duplicate project identity: ${binding.projectId}');
+    }
+    if (byManifestPath(binding.manifestPath) != null) {
+      throw StateError('duplicate manifest path: ${binding.manifestPath}');
+    }
+    _bindings.add(binding);
+    await _save();
+    return binding;
+  }
+
+  /// Low-level replace used by migration: swaps the record for the same
+  /// project identity. Throws [StateError] when no such identity exists.
+  Future<ProjectBinding> replace(ProjectBinding binding) async {
+    final index = _bindings.indexWhere((b) => b.projectId == binding.projectId);
+    if (index < 0) {
+      throw StateError('no binding for project identity: ${binding.projectId}');
+    }
+    _bindings[index] = binding;
+    await _save();
+    return binding;
+  }
+
   ProjectBinding? byProjectId(String projectId) {
     for (final binding in _bindings) {
       if (binding.projectId == projectId) return binding;
@@ -89,6 +120,10 @@ class BindingStore implements BindingLookup {
   /// duplicate project, preferences preserved. Throws [ManifestException]
   /// with the concrete reason when the configuration is unusable; no binding
   /// is created or modified in that case.
+  ///
+  /// Identity/path collisions throw here; the structured flow that surfaces
+  /// them for user choice (migrate vs. new project) lives in
+  /// `association.dart` (`AssociationFlow`).
   Future<ProjectBinding> associate(String manifestPath) async {
     final canonical = _canonical(manifestPath);
     final existing = byManifestPath(canonical);

@@ -2,10 +2,12 @@
 /// registry, independent of the Flutter UI.
 library;
 
+export 'src/association.dart';
 export 'src/binding_lookup.dart';
 export 'src/binding_store.dart';
 export 'src/endpoint.dart';
 export 'src/endpoint_lock.dart';
 export 'src/manifest.dart';
+export 'src/operations.dart';
 export 'src/registry.dart';
 export 'src/server.dart';

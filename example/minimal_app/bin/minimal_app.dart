@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:maclauncher_sdk/maclauncher_sdk.dart';
 import 'package:minimal_app/fake_business.dart';
 
-/// Minimal controlled peer: registers one fake service and stays connected.
+/// Minimal controlled peer: registers two fake services and stays connected.
 ///
 /// Usage: dart run bin/minimal_app.dart <projectId> [socketPath]
 Future<void> main(List<String> args) async {
@@ -16,11 +16,13 @@ Future<void> main(List<String> args) async {
   final projectId = args[0];
   final socketPath = args.length > 1 ? args[1] : null;
 
-  final business = FakeBusiness(name: 'demo-service');
   final sdk = MacLauncherSdk.connect(
     projectId: projectId,
     socketPath: socketPath,
-    services: {'demo': business.callbacks()},
+    services: {
+      'demo': FakeBusiness(name: '演示服务').callbacks(),
+      'worker': FakeBusiness(name: '后台服务').callbacks(),
+    },
   );
 
   sdk.states.listen((s) {

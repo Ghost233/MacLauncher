@@ -8,6 +8,10 @@
     {
       "id": "demo",
       "name": "演示服务"
+    },
+    {
+      "id": "worker",
+      "name": "后台服务"
     }
   ],
   "entry": {

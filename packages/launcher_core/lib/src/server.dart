@@ -112,6 +112,14 @@ class LauncherServer {
     session.serve();
   }
 
+  /// The live session for [projectId], when connected.
+  ServerSession? sessionFor(String projectId) {
+    for (final session in _sessions) {
+      if (session.project?.projectId == projectId) return session;
+    }
+    return null;
+  }
+
   void _reject(IOSink sink, String reason) {
     writeMessage(sink, {
       'type': 'welcome',
@@ -134,6 +142,8 @@ class ServerSession {
   final LauncherServer _server;
   final String launcherSessionId;
   final Completer<void> _done = Completer<void>();
+  final _pending = <String, Completer<Map<String, Object?>>>{};
+  var _requestCounter = 0;
 
   ConnectedProject? project;
 
@@ -192,8 +202,16 @@ class ServerSession {
 
       while (await iterator.moveNext()) {
         final message = iterator.current;
-        if (message['type'] == 'ping') {
-          writeMessage(_socket, {'type': 'pong', 'sentAt': message['sentAt']});
+        switch (message['type']) {
+          case 'ping':
+            writeMessage(_socket, {
+              'type': 'pong',
+              'sentAt': message['sentAt'],
+            });
+          case 'response':
+            final id = message['id'] as String?;
+            final completer = id == null ? null : _pending.remove(id);
+            completer?.complete(message);
         }
       }
     } catch (_) {
@@ -205,6 +223,12 @@ class ServerSession {
           _server.registry.unregister(project!.projectId, launcherSessionId);
         }
       } finally {
+        for (final completer in _pending.values) {
+          if (!completer.isCompleted) {
+            completer.completeError(StateError('connection lost'));
+          }
+        }
+        _pending.clear();
         try {
           await _socket.close();
         } catch (_) {}
@@ -251,6 +275,35 @@ class ServerSession {
       }
     }
     return true;
+  }
+
+  /// Sends one request and waits for its response, correlated by request id.
+  ///
+  /// On [timeout] the pending entry is dropped and a [TimeoutException] is
+  /// thrown: the application's callback is never cancelled, and nothing is
+  /// resent automatically.
+  Future<Map<String, Object?>> sendRequest(
+    String method, {
+    String? serviceId,
+    Map<String, Object?>? params,
+    required Duration timeout,
+  }) async {
+    final id = '$launcherSessionId-r${++_requestCounter}';
+    final completer = Completer<Map<String, Object?>>();
+    _pending[id] = completer;
+    writeMessage(_socket, {
+      'type': 'request',
+      'id': id,
+      'method': method,
+      if (serviceId != null) 'serviceId': serviceId,
+      if (params != null) 'params': params,
+    });
+    try {
+      return await completer.future.timeout(timeout);
+    } on TimeoutException {
+      _pending.remove(id);
+      rethrow;
+    }
   }
 
   Future<void> close() async {
