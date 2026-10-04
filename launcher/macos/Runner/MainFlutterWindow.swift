@@ -1,5 +1,6 @@
 import Cocoa
 import FlutterMacOS
+import ServiceManagement
 
 class MainFlutterWindow: NSWindow {
   override func awakeFromNib() {
@@ -25,6 +26,28 @@ class MainFlutterWindow: NSWindow {
         panel.nameFieldStringValue = "maclauncher.json"
         panel.message = "选择项目目录中的 maclauncher.json"
         result(panel.runModal() == .OK ? panel.url?.path : nil)
+      case "loginItemStatus":
+        switch SMAppService.mainApp.status {
+        case .enabled: result("enabled")
+        case .requiresApproval: result("requiresApproval")
+        case .notFound: result("notFound")
+        default: result("notRegistered")
+        }
+      case "setLoginItemEnabled":
+        let enable = (call.arguments as? Bool) ?? false
+        do {
+          if enable {
+            try SMAppService.mainApp.register()
+          } else {
+            try SMAppService.mainApp.unregister()
+          }
+          result(nil)
+        } catch {
+          result(FlutterError(
+            code: "login-item",
+            message: error.localizedDescription,
+            details: nil))
+        }
       default:
         result(FlutterMethodNotImplemented)
       }
