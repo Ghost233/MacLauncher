@@ -5,33 +5,91 @@ import 'package:flutter/services.dart';
 import 'package:launcher_core/launcher_core.dart';
 import 'package:maclauncher_sdk/maclauncher_sdk.dart';
 
+import 'project_card.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final layout = EndpointLayout.forUser();
   final bindings = await BindingStore.load('${layout.directory}/bindings.json');
+  final prefs = await PreferenceStore.load(
+    '${layout.directory}/preferences.json',
+  );
+  final refresher = await ConfigRefresher.load(
+    bindings,
+    '${layout.directory}/config_state.json',
+    prunePreferences: (projectId, removedServiceIds) async {
+      for (final serviceId in removedServiceIds) {
+        await prefs.setLoginStartEnabled(projectId, serviceId, false);
+      }
+    },
+  );
+
   LauncherServer? server;
+  ServiceOperations? operations;
+  EntryHandoffCoordinator? handoff;
   Object? error;
   try {
     server = await LauncherServer.start(layout: layout, bindings: bindings);
+    final orchestrator = LaunchOrchestrator(server: server, store: bindings);
+    operations = ServiceOperations(
+      server: server,
+      scope: BindingServiceScope(bindings),
+      launcher: orchestrator,
+    );
+    final ops = operations;
+    handoff = EntryHandoffCoordinator(
+      server: server,
+      statusQuery: (projectId) async {
+        final project = server!.registry.byProject(projectId);
+        if (project != null) {
+          for (final service in project.capabilities.services) {
+            if (service.supports(kMethodStatus)) {
+              await ops.status(projectId, service.id);
+            }
+          }
+        }
+        return true;
+      },
+    );
+    await refresher.refreshAll();
+    await AutostartNotifier(preferences: prefs)
+        .runOnce(bindings: bindings, startService: operations.start);
   } catch (e) {
     error = e;
   }
+
   runApp(
-    MacLauncherApp(server: server, serverError: error, bindings: bindings),
+    MacLauncherApp(
+      server: server,
+      serverError: error,
+      bindings: bindings,
+      preferences: prefs,
+      refresher: refresher,
+      operations: operations,
+      handoff: handoff,
+    ),
   );
 }
 
 class MacLauncherApp extends StatelessWidget {
   const MacLauncherApp({
     super.key,
+    required this.bindings,
+    required this.preferences,
+    required this.refresher,
     this.server,
     this.serverError,
-    required this.bindings,
+    this.operations,
+    this.handoff,
   });
 
   final LauncherServer? server;
   final Object? serverError;
   final BindingStore bindings;
+  final PreferenceStore preferences;
+  final ConfigRefresher refresher;
+  final ServiceOperations? operations;
+  final EntryHandoffCoordinator? handoff;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -41,23 +99,35 @@ class MacLauncherApp extends StatelessWidget {
       server: server,
       serverError: serverError,
       bindings: bindings,
+      preferences: preferences,
+      refresher: refresher,
+      operations: operations,
+      handoff: handoff,
     ),
   );
 }
 
-/// The optional management window: project bindings, live connections and
-/// per-service operations with application-reported snapshots.
+/// The optional management window: project bindings, live connections,
+/// per-service operations, handoff state and configuration health.
 class ManagementPage extends StatefulWidget {
   const ManagementPage({
     super.key,
+    required this.bindings,
+    required this.preferences,
+    required this.refresher,
     this.server,
     this.serverError,
-    required this.bindings,
+    this.operations,
+    this.handoff,
   });
 
   final LauncherServer? server;
   final Object? serverError;
   final BindingStore bindings;
+  final PreferenceStore preferences;
+  final ConfigRefresher refresher;
+  final ServiceOperations? operations;
+  final EntryHandoffCoordinator? handoff;
 
   @override
   State<ManagementPage> createState() => _ManagementPageState();
@@ -65,99 +135,82 @@ class ManagementPage extends StatefulWidget {
 
 class _ManagementPageState extends State<ManagementPage> {
   static const _native = MethodChannel('maclauncher/native');
-  StreamSubscription<ConnectedProject?>? _subscription;
 
-  /// Application-reported snapshots, keyed `$projectId/$serviceId`. A button
-  /// click never writes business state here directly; only query results do.
-  final Map<String, ServiceStatus> _statuses = {};
-  final Map<String, String> _notes = {};
-  final Set<String> _pending = {};
-
-  ServiceOperations? _operations;
-
-  ServiceOperations get operations => _operations ??= ServiceOperations(
-    server: widget.server!,
-    scope: BindingServiceScope(widget.bindings),
-  );
+  StreamSubscription<ConnectedProject?>? _registrySub;
+  StreamSubscription<HandoffState>? _handoffSub;
+  final Map<String, EntryHandoffStatus> _handoffStatus = {};
+  String _loginItemStatus = 'unknown';
 
   @override
   void initState() {
     super.initState();
-    _subscription = widget.server?.registry.changes.listen((project) async {
-      if (project != null) await _queryAll(project);
+    _registrySub = widget.server?.registry.changes.listen((_) {
       if (mounted) setState(() {});
     });
+    final handoff = widget.handoff;
+    if (handoff != null) {
+      _handoffSub = handoff.states.listen((state) {
+        if (mounted) {
+          setState(() => _handoffStatus[state.projectId] = state.status);
+        }
+      });
+    }
+    _loadLoginItemStatus();
   }
 
   @override
   void dispose() {
-    _subscription?.cancel();
+    _registrySub?.cancel();
+    _handoffSub?.cancel();
     super.dispose();
   }
 
-  String _key(String projectId, String serviceId) => '$projectId/$serviceId';
+  EntryHandoffStatus handoffStatusOf(String projectId) =>
+      _handoffStatus[projectId] ??
+      widget.handoff?.statusOf(projectId) ??
+      EntryHandoffStatus.unmanaged;
 
-  Future<void> _queryAll(ConnectedProject project) async {
-    for (final service in project.capabilities.services) {
-      if (service.supports(kMethodStatus)) {
-        await _queryStatus(project.projectId, service.id);
+  Future<void> _loadLoginItemStatus() async {
+    try {
+      final status = await _native.invokeMethod<String>('loginItemStatus');
+      if (mounted && status != null) {
+        setState(() => _loginItemStatus = status);
       }
+    } catch (_) {
+      // Channel unavailable (tests, or before the window attaches).
     }
   }
 
-  Future<void> _queryStatus(String projectId, String serviceId) async {
-    final key = _key(projectId, serviceId);
-    final result = await operations.status(projectId, serviceId);
-    if (!mounted) return;
-    setState(() {
-      switch (result) {
-        case StatusSnapshot(:final status):
-          _statuses[key] = status;
-          _notes.remove(key);
-        case StatusUnsupported():
-          _notes[key] = '应用未提供状态能力';
-        case StatusUnknown(:final reason):
-          _notes[key] = '状态未知（$reason）';
-      }
-    });
+  Future<void> _toggleLoginItem() async {
+    try {
+      final enable = _loginItemStatus != 'enabled';
+      await _native.invokeMethod<void>('setLoginItemEnabled', enable);
+    } on PlatformException catch (e) {
+      if (mounted) _toast('登录项操作失败：${e.message}');
+    } catch (_) {
+      // Channel unavailable.
+    }
+    await _loadLoginItemStatus();
+    if (mounted && _loginItemStatus == 'requiresApproval') {
+      _toast('需要批准：系统设置 → 通用 → 登录项与扩展');
+    }
   }
 
-  Future<void> _change(
-    String projectId,
-    String serviceId,
-    Future<OperationOutcome> Function() invoke,
-  ) async {
-    final key = _key(projectId, serviceId);
-    setState(() {
-      _pending.add(key);
-      // Sending is not completion: never write business state here.
-      _notes[key] = '已发送，等待应用回报…';
-    });
-    final outcome = await invoke();
-    if (!mounted) return;
-    setState(() {
-      _pending.remove(key);
-      switch (outcome) {
-        case OperationAcknowledged():
-          _notes[key] = '应用已应答，正在刷新状态…';
-        case OperationUnsupported():
-          _notes[key] = '应用不支持该操作';
-        case OperationFailed(:final reason):
-          _notes[key] = '应用报告失败：$reason';
-        case OperationBusy():
-          _notes[key] = '该服务正忙（busy）';
-        case OperationUnknown():
-          _notes[key] = '结果未知：等待超时，未重发、未强制停止';
-        case OperationUnavailable(:final reason):
-          _notes[key] = '无法发送：$reason';
-      }
-    });
-    // After the application answers, re-query the real business state.
-    await _queryStatus(projectId, serviceId);
-  }
+  String get _loginItemLabel => switch (_loginItemStatus) {
+    'enabled' => '登录项：已启用',
+    'requiresApproval' => '登录项：需在系统设置批准',
+    'notRegistered' => '登录项：未注册',
+    'notFound' => '登录项：不可用',
+    _ => '登录项：状态未知',
+  };
 
   Future<void> _associate() async {
-    final path = await _native.invokeMethod<String>('pickManifest');
+    String? path;
+    try {
+      path = await _native.invokeMethod<String>('pickManifest');
+    } catch (_) {
+      return;
+    }
     if (path == null || !mounted) return;
     try {
       final flow = AssociationFlow(widget.bindings);
@@ -227,6 +280,24 @@ class _ManagementPageState extends State<ManagementPage> {
     }
   }
 
+  Future<void> _refreshConfig(String projectId) async {
+    final result = await widget.refresher.refresh(projectId);
+    if (!mounted) return;
+    setState(() {});
+    switch (result) {
+      case RefreshApplied(:final added, :final removed):
+        _toast('配置已刷新：新增 ${added.length} 项，移除 ${removed.length} 项。');
+      case RefreshUnchanged():
+        _toast('配置无变化。');
+      case RefreshInvalid(:final reason, :final detail):
+        _toast('配置失效：$reason（$detail），已保留绑定并暂停新启动。');
+      case RefreshIdentityMismatch(:final declaredProjectId):
+        _toast('配置身份变为 $declaredProjectId，请通过关联流程迁移或新建项目。');
+      case RefreshNotBound():
+        _toast('该配置已解除绑定。');
+    }
+  }
+
   void _toast(String message) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
@@ -254,6 +325,7 @@ class _ManagementPageState extends State<ManagementPage> {
       appBar: AppBar(
         title: const Text('MacLauncher 管理'),
         actions: [
+          TextButton(onPressed: _toggleLoginItem, child: Text(_loginItemLabel)),
           TextButton.icon(
             onPressed: _associate,
             icon: const Icon(Icons.link),
@@ -271,197 +343,32 @@ class _ManagementPageState extends State<ManagementPage> {
           : ListView(
               children: [
                 for (final binding in bindings)
-                  _ProjectCard(
+                  ProjectCard(
                     binding: binding,
                     registry: registry,
-                    statuses: _statuses,
-                    notes: _notes,
-                    pending: _pending,
-                    onAction: (serviceId, action) {
-                      if (action == 'refresh') {
-                        _queryStatus(binding.projectId, serviceId);
-                        return;
-                      }
-                      final invoke = action == 'start'
-                          ? () => operations.start(binding.projectId, serviceId)
-                          : () => operations.recycle(
-                              binding.projectId,
-                              serviceId,
-                            );
-                      _change(binding.projectId, serviceId, invoke);
+                    operations: widget.operations,
+                    preferences: widget.preferences,
+                    refresher: widget.refresher,
+                    handoffStatus: handoffStatusOf(binding.projectId),
+                    onOpenWindow: () async {
+                      final handoff = widget.handoff;
+                      if (handoff == null) return;
+                      final outcome = await handoff.openWindow(
+                        binding.projectId,
+                      );
+                      if (!context.mounted) return;
+                      _toast(switch (outcome) {
+                        HandoffRequestOutcome.acknowledged => '已请求应用打开原窗口。',
+                        HandoffRequestOutcome.unsupported => '应用未提供打开窗口能力。',
+                        HandoffRequestOutcome.unavailable => '应用未连接。',
+                        HandoffRequestOutcome.unknown => '结果未知：等待超时。',
+                      });
                     },
+                    onRefreshConfig: () => _refreshConfig(binding.projectId),
+                    onChanged: () => setState(() {}),
                   ),
               ],
             ),
-    );
-  }
-}
-
-class _ProjectCard extends StatelessWidget {
-  const _ProjectCard({
-    required this.binding,
-    required this.statuses,
-    required this.notes,
-    required this.pending,
-    required this.onAction,
-    this.registry,
-  });
-
-  final ProjectBinding binding;
-  final ConnectionRegistry? registry;
-  final Map<String, ServiceStatus> statuses;
-  final Map<String, String> notes;
-  final Set<String> pending;
-  final void Function(String serviceId, String action) onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final connected = registry?.isActive(binding.projectId) ?? false;
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    binding.name,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-                Text(connected ? '应用连接：已连接' : '应用连接：未连接'),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text('项目标识：${binding.projectId}'),
-            const Divider(),
-            for (final service in binding.services)
-              _ServiceLine(
-                projectId: binding.projectId,
-                service: service,
-                registry: registry,
-                status: statuses['${binding.projectId}/${service.id}'],
-                note: notes['${binding.projectId}/${service.id}'],
-                busy: pending.contains('${binding.projectId}/${service.id}'),
-                onAction: (action) => onAction(service.id, action),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ServiceLine extends StatelessWidget {
-  const _ServiceLine({
-    required this.projectId,
-    required this.service,
-    required this.onAction,
-    this.registry,
-    this.status,
-    this.note,
-    this.busy = false,
-  });
-
-  final String projectId;
-  final ManifestService service;
-  final ConnectionRegistry? registry;
-  final ServiceStatus? status;
-  final String? note;
-  final bool busy;
-  final void Function(String action) onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final declared = registry
-        ?.byProject(projectId)
-        ?.capabilities
-        .serviceById(service.id);
-    final connected = declared != null;
-    final canStart = connected && declared.supports(kMethodStart);
-    final canRecycle = connected && declared.supports(kMethodRecycle);
-    final canStatus = connected && declared.supports(kMethodStatus);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '服务 ${service.name}（${service.id}）',
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-              ),
-              if (busy)
-                const Padding(
-                  padding: EdgeInsets.only(right: 8),
-                  child: SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  ),
-                ),
-              TextButton(
-                onPressed: canStart && !busy ? () => onAction('start') : null,
-                child: const Text('启动'),
-              ),
-              TextButton(
-                onPressed: canRecycle && !busy
-                    ? () => onAction('recycle')
-                    : null,
-                child: const Text('回收'),
-              ),
-              TextButton(
-                onPressed: canStatus && !busy
-                    ? () => onAction('refresh')
-                    : null,
-                child: const Text('刷新'),
-              ),
-            ],
-          ),
-          if (status != null) _StatusView(status: status!),
-          if (note != null)
-            Text(
-              note!,
-              style: Theme.of(context).textTheme.bodySmall
-                  ?.copyWith(color: Theme.of(context).colorScheme.secondary),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatusView extends StatelessWidget {
-  const _StatusView({required this.status});
-
-  final ServiceStatus status;
-
-  @override
-  Widget build(BuildContext context) {
-    final parts = <String>['状态：${status.state.name}'];
-    if (status.instanceId != null) parts.add('实例：${status.instanceId}');
-    if (status.state == ServiceState.running) {
-      parts.add(switch (status.ready) {
-        true => '已就绪',
-        false => '运行中但未就绪',
-        null => '就绪情况未知',
-      });
-    }
-    if (status.observedAt != null) {
-      parts.add('观测于 ${status.observedAt!.toLocal()}');
-    } else {
-      parts.add('观测时间未知（仅为应用报告）');
-    }
-    if (status.message != null) parts.add(status.message!);
-    return Text(
-      parts.join(' · '),
-      style: Theme.of(context).textTheme.bodySmall,
     );
   }
 }
