@@ -1,0 +1,22 @@
+sequenceDiagram
+  participant L as 启动器
+  participant S as 项目 SDK
+  participant A as 独立应用回调
+  S->>L: 连接并登记项目与能力
+  L-->>S: 验证绑定与协议版本
+  L->>S: 查询现有状态
+  S->>A: status()
+  A-->>S: 返回真实状态
+  S-->>L: 返回状态
+  Note over L,S: 统一入口可用后接管
+  L->>S: 临时接管入口
+  S->>A: 隐藏自身菜单栏入口
+  A-->>S: 返回隐藏结果
+  S-->>L: 确认接管结果
+  L->>S: 启动请求或用户回收请求
+  S->>A: start() 或 recycle()
+  A-->>S: 返回执行结果
+  S-->>L: 返回结果
+  Note over L,S: 断连，或 15 秒没有心跳回复
+  S->>A: 恢复接管前的菜单栏入口
+  Note over S,A: 业务继续，原窗口保留
