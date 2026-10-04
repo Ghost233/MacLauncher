@@ -12,7 +12,7 @@
   ],
   "entry": {
     "kind": "executable",
-    "program": "../minimal_app/build/minimal_app",
+    "path": "../minimal_app/build/minimal_app",
     "args": ["demo-project"],
     "workingDirectory": "."
   },
