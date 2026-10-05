@@ -76,6 +76,9 @@ void main() {
     addTearDown(server.close);
 
     await until(() => server.registry.isActive('proj-1'));
+    // Server-side registration precedes the client's welcome processing by
+    // one async hop; wait on the client-side session id itself.
+    await until(() => sdk.launcherSessionId != null);
     expect(sdk.launcherSessionId, isNotNull);
     expect(sdk.launcherSessionId, isNot(firstSession));
   });

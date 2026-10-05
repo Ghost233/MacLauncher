@@ -266,6 +266,13 @@ void main() {
       addTearDown(vm.dispose);
 
       await until(() => probe.logsCalls >= 2);
+      // The call count is app-side; the view update trails it by one async
+      // hop. Wait on the state itself, not the counter.
+      await until(
+        () =>
+            vm.current.kind == LogViewKind.batch &&
+            vm.current.batch!.entries.map((e) => e.text).join(',') == 'three',
+      );
 
       final state = vm.current;
       expect(state.kind, LogViewKind.batch);

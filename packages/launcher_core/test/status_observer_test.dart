@@ -241,12 +241,11 @@ void main() {
     service.onStatus = () {
       if (first) {
         first = false;
-        return Future.value(
-          ServiceStatus(
-            state: ServiceState.running,
-            observedAt: DateTime.now().toUtc(),
-          ),
-        );
+        // No observedAt on the first answer: this test targets the
+        // "no fresh result" branch deterministically. With a timestamped
+        // answer, the "last observation expired" branch reaches its
+        // threshold first whenever the round trip is slow under load.
+        return Future.value(ServiceStatus(state: ServiceState.running));
       }
       // Subsequent queries hang: no fresh results arrive.
       return gate.future.then(
