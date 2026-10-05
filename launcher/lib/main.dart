@@ -7,6 +7,7 @@ import 'package:maclauncher_sdk/maclauncher_sdk.dart';
 
 import 'live_debug.dart';
 import 'project_card.dart';
+import 'settings_page.dart';
 import 'theme.dart';
 
 Future<void> main() async {
@@ -307,6 +308,19 @@ class _ManagementPageState extends State<ManagementPage> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => SettingsPage(
+          preferences: widget.preferences,
+          // Placeholder until the update checker (#29) lands; #31 replaces
+          // this closure through the same seam.
+          onCheckNow: () async => _toast('更新检查将在后续版本接入。'),
+        ),
+      ),
+    );
+  }
+
   Future<void> _alert(String title, String message) => showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
@@ -350,6 +364,12 @@ class _ManagementPageState extends State<ManagementPage> {
               padding: const EdgeInsets.symmetric(horizontal: 14),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
+          ),
+          const SizedBox(width: AppTheme.gapMd),
+          IconButton(
+            tooltip: '设置',
+            onPressed: _openSettings,
+            icon: const Icon(Icons.settings_outlined),
           ),
           const SizedBox(width: AppTheme.gapMd),
         ],
@@ -404,9 +424,7 @@ class _ManagementPageState extends State<ManagementPage> {
                   children: [
                     for (final binding in bindings)
                       Padding(
-                        padding: const EdgeInsets.only(
-                          bottom: AppTheme.gapLg,
-                        ),
+                        padding: const EdgeInsets.only(bottom: AppTheme.gapLg),
                         child: ProjectCard(
                           binding: binding,
                           registry: registry,
