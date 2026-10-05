@@ -22,9 +22,9 @@ env:
 
 jobs:
   build:
+    # 不传 version：可复用管线的缺省值即 latest（GitHub 不允许在调用方
+    # job 的 with 里引用 env 上下文，故由被调方缺省值承载滚动名）。
     uses: ./.github/workflows/build-macos-dmg.yml
-    with:
-      version: ${{ env.ROLLING_TAG }}
     permissions:
       contents: read
 

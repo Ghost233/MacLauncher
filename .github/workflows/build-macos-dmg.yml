@@ -11,9 +11,10 @@ on:
   workflow_call:
     inputs:
       version:
-        description: "产物命名用版本（正式发布为 pubspec version，滚动构建为 latest）"
-        required: true
+        description: "产物命名用版本（正式发布为 pubspec version，滚动构建缺省 latest）"
+        required: false
         type: string
+        default: latest
 
 jobs:
   build:
