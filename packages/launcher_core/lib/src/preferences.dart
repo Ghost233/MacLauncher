@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'storage_corruption.dart';
+
 /// Launcher-local login-start preferences.
 ///
 /// Preferences live in the launcher's own storage only — never written back
@@ -8,7 +10,13 @@ import 'dart:io';
 /// them, and disabling a preference never stops a running business: this
 /// store simply has no interaction with business operations.
 class PreferenceStore {
-  PreferenceStore._(this._file, this._prefs, this._updatePrefs, this._guidance);
+  PreferenceStore._(
+    this._file,
+    this._prefs,
+    this._updatePrefs,
+    this._guidance,
+    this.corruptionReport,
+  );
 
   /// Reserved top-level key for launcher-wide update preferences. Every
   /// other top-level key is a projectId; the '@' prefix keeps this key
@@ -37,31 +45,83 @@ class PreferenceStore {
   /// One-shot guidance flags; absent keys fall back to their defaults.
   final Map<String, bool> _guidance;
 
+  /// Damage found while loading, or null when the file was fully healthy.
+  final StorageCorruptionReport? corruptionReport;
+
+  /// Loads the store, tolerating damage: unparseable JSON or a non-map top
+  /// level moves the original aside to `.corrupt-<timestamp>` and starts
+  /// empty; individually invalid entries are skipped while good entries
+  /// load normally. Either shape is exposed via [corruptionReport];
+  /// loading never throws for damaged content.
   static Future<PreferenceStore> load(String filePath) async {
     final file = File(filePath);
-    if (!file.existsSync()) return PreferenceStore._(file, {}, {}, {});
-    final decoded = jsonDecode(await file.readAsString());
+    if (!file.existsSync()) return PreferenceStore._(file, {}, {}, {}, null);
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(await file.readAsString());
+    } on FormatException {
+      return PreferenceStore._(
+        file,
+        {},
+        {},
+        {},
+        await _wholeFileCorruption(file),
+      );
+    }
+    if (decoded is! Map) {
+      return PreferenceStore._(
+        file,
+        {},
+        {},
+        {},
+        await _wholeFileCorruption(file),
+      );
+    }
     final prefs = <String, Map<String, bool>>{};
     final updatePrefs = <String, bool>{};
     final guidance = <String, bool>{};
-    for (final entry in (decoded as Map).cast<String, Object?>().entries) {
+    var skipped = 0;
+    for (final entry in decoded.cast<String, Object?>().entries) {
+      if (entry.value is! Map) {
+        skipped++;
+        continue;
+      }
+      final record = (entry.value! as Map).cast<String, Object?>();
       if (entry.key == _updatesKey || entry.key == _guidanceKey) {
         final target = entry.key == _updatesKey ? updatePrefs : guidance;
-        for (final pref
-            in (entry.value as Map).cast<String, Object?>().entries) {
+        for (final pref in record.entries) {
           if (pref.value is bool) target[pref.key] = pref.value! as bool;
         }
         continue;
       }
       final services = <String, bool>{};
-      for (final service
-          in (entry.value as Map).cast<String, Object?>().entries) {
+      for (final service in record.entries) {
         if (service.value == true) services[service.key] = true;
       }
       if (services.isNotEmpty) prefs[entry.key] = services;
     }
-    return PreferenceStore._(file, prefs, updatePrefs, guidance);
+    return PreferenceStore._(
+      file,
+      prefs,
+      updatePrefs,
+      guidance,
+      skipped > 0
+          ? StorageCorruptionReport(
+              filePath: file.path,
+              backupPath: null,
+              skippedRecords: skipped,
+            )
+          : null,
+    );
   }
+
+  static Future<StorageCorruptionReport> _wholeFileCorruption(
+    File file,
+  ) async => StorageCorruptionReport(
+    filePath: file.path,
+    backupPath: await backupCorruptedFile(file),
+    skippedRecords: 0,
+  );
 
   bool isLoginStartEnabled(String projectId, String serviceId) =>
       _prefs[projectId]?[serviceId] ?? false;
