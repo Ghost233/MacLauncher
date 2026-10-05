@@ -43,3 +43,14 @@ GitHub 的 issue 与 PR 共用编号空间，因此单独的 `#42` 可能是任�
 - **前沿查询**：列出地图的开放子项（`gh issue list --state open`，限定到地图 sub-issues/任务列表），排除存在开放阻塞项（`issue_dependencies_summary.blocked_by > 0`，或 `Blocked by` 行中的某个 issue 仍然开放）或已有 assignee 的工单；按地图顺序取第一个。
 - **认领**：`gh issue edit <n> --add-assignee @me`，这是会话第一次写操作。
 - **解决**：运行 `gh issue comment <n> --body-file <回答文件>`，再运行 `gh issue close <n>`，最后把上下文指针（摘要 + 链接）追加到地图的 Decisions-so-far。
+
+## 网络抖动与重试
+
+本仓库的 GitHub API 调用在部分网络环境下频繁出现 TLS handshake timeout。所有 `gh` 写操作（建 issue、评论、接线、合并）外加「读后立即依赖其副作用」的读操作，都应套重试（建议 4 次、间隔 5s），例如：
+
+```sh
+retry() { for i in 1 2 3 4; do "$@" && return 0; sleep 5; done; return 1; }
+retry gh issue comment 27 -R Ghost233/MacLauncher --body-file report.md
+```
+
+一次失败后不要立刻改判「操作未发生」——先重试或先读回状态验证。

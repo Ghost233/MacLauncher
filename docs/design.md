@@ -1,0 +1,38 @@
+# MacLauncher 项目界面约定
+
+本文件保留项目职责和实现映射。通用字体、颜色、尺寸、控件状态及视觉验收通过用户级 `$macos-ui-standards` skill 在明确调用时应用；AGENTS.md 不自动要求读取它。
+
+## 页面职责与应用边界
+
+权威行为见 [项目关联](PROJECT_ASSOCIATION.md)、[入口接管](ENTRY_HANDOFF.md)、[日志](LOGS.md) 和 [生命周期 ADR](adr/0001-application-owned-lifecycle.md)，术语见 [CONTEXT.md](../CONTEXT.md)。
+
+- 项目卡片与服务行围绕关联项目、查询状态和发起操作组织，详细配置和日志按需展示。
+- 应用连接、入口接管、服务运行和服务就绪分别呈现；操作请求成功不直接表示目标服务已运行或就绪。
+- 日志保持目标应用报告的原始内容，未知范围、分流和时间按实际数据表达。
+- 启动器发送请求，目标应用管理自身生命周期；启动器退出或失联不结束目标应用的分离运行。UI skill 不改变该 ADR。
+
+## 实现与角色映射
+
+主题入口为 `launcher/lib/theme.dart` 的 `AppTheme`，状态继续复用 `StatusPill`。调用 skill 时按下表映射；新的通用参数在个人 skill 中维护。
+
+| 项目角色 | 主题接口 | Apple 文本角色 |
+| --- | --- | --- |
+| 窗口/工具栏标题 | `pageTitle` | Title 2 |
+| 项目/面板标题 | `cardTitle` | Title 3 |
+| 服务名称 | `serviceName` | Body 强调变体 |
+| 正文 | `body` | Body |
+| 辅助信息 | `caption` / `captionMuted` | Callout |
+| 路径、标识与日志 | `mono` / `monoMuted` | 系统等宽字体 |
+
+## 验收记录
+
+领域行为按上述项目文档执行。用户调用 UI skill 时，另验证受影响的界面与键盘操作，记录窗口尺寸、支持的主题、版本及截图；菜单栏、登录项、窗口接管/归还需要各自的 Mac 原生验收。
+
+## Widget 测试锚点
+
+widget 测试靠可见文案定位。以下文本是测试锚点，改动 UI 文案时同步改测试（launcher/test/widget_test.dart、settings_page_test.dart、app_update_section_test.dart、self_update_flow_test.dart）：
+
+- 项目卡：项目名、「应用连接：未连接/已连接」、「统一入口：接管完成」、「打开窗口」
+- 服务行：「服务 {名}（{id}）」、「状态：…」、「实例：…」、「已就绪」、按钮「启动/回收/刷新/日志」
+- 日志面板：「读取中…」「应用未提供日志能力。」「无日志（读取成功但为空）。」「旧内容」「未提供实例范围」、关闭按钮 Icons.close
+- 设置页：三个开关文案与「需要签名证书，暂不可用」说明、「立即检查更新」
