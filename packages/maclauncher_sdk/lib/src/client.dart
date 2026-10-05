@@ -502,7 +502,17 @@ class MacLauncherSdk {
         // No callback is not an error: answer 「不支持更新」 so the launcher
         // can show that instead of a failure.
         if (cb == null) return VersionStatus.unsupported().toJson();
-        return (await cb()).toJson();
+        // A throwing callback is not a protocol error either: report the
+        // failed query as a normal answer so the launcher can distinguish it
+        // from a timeout or disconnect.
+        try {
+          return (await cb()).toJson();
+        } catch (error) {
+          return VersionStatus(
+            state: VersionQueryState.failure,
+            failureReason: 'onVersionStatus threw: $error',
+          ).toJson();
+        }
       default:
         throw ProtocolError(
           ProtocolError.unsupported,

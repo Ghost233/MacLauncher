@@ -211,6 +211,24 @@ void main() {
     );
 
     test(
+      'throwing callback is wrapped into a failure answer, not unknown',
+      () async {
+        await bindProject();
+        final server = await runningPair(
+          app: AppCallbacks(
+            onVersionStatus: () async => throw StateError('更新源响应不是 JSON'),
+          ),
+        );
+
+        final result = await ops(server).versionStatus('proj-a');
+
+        final status = (result as VersionStatusSnapshot).status;
+        expect(status.state, VersionQueryState.failure);
+        expect(status.failureReason, contains('更新源响应不是 JSON'));
+      },
+    );
+
+    test(
       'application-reported unsupported is an answer, not an error',
       () async {
         await bindProject();
