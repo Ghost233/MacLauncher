@@ -1,9 +1,10 @@
 name: Rolling (latest)
 
 # 合入 main 触发滚动构建：
-# 同一构建打包管线，滚动更新名为 latest 的 prerelease（--clobber 覆盖旧 asset）。
-# latest tag 每次随 main 前移（force-update），Release 页 source 快照即当前 main，
-# 与打 tag 的正式发布（release.yml）相区分，见 CONTEXT.md「滚动构建」。
+# 同一构建打包管线，滚动更新名为 latest 的 Release（--clobber 覆盖旧 asset）。
+# latest tag 每次随 main 前移（force-update），Release 页 source 快照即当前 main。
+# latest 是普通 Release（非 prerelease），但 --latest=false 把 Latest 徽章
+# 留给打 tag 的正式发布（release.yml），见 CONTEXT.md「滚动构建」。
 
 on:
   push:
@@ -61,9 +62,12 @@ jobs:
           # 首次没有 latest 时创建；之后每次用 --clobber 覆盖同名 asset。
           if ! gh release view "$ROLLING_TAG" >/dev/null 2>&1; then
             gh release create "$ROLLING_TAG" \
-              --prerelease \
+              --latest=false \
               --title "$ROLLING_TAG (rolling)" \
               --notes "滚动构建：随 main 更新；latest tag 随 main 前移，source 快照即当前 main。"
           fi
           gh release upload "$ROLLING_TAG" dist/* --clobber
-          gh release edit "$ROLLING_TAG" --notes "滚动构建：main@${GITHUB_SHA:0:7}（$(date -u +%Y-%m-%d) UTC 构建）。latest tag 随 main 前移，source 快照即当前 main。DMG 未签名，完整性核对见 SHA256SUMS.txt。"
+          # --prerelease=false 把历史遗留的 prerelease 标记翻正；--latest=false
+          # 保证 Latest 徽章始终留在打 tag 的正式发布上。
+          gh release edit "$ROLLING_TAG" --prerelease=false --latest=false \
+            --notes "滚动构建：main@${GITHUB_SHA:0:7}（$(date -u +%Y-%m-%d) UTC 构建）。latest tag 随 main 前移，source 快照即当前 main。DMG 未签名，完整性核对见 SHA256SUMS.txt。"

@@ -43,6 +43,6 @@ _避免使用_：界面嵌入、进程合并
 
 **更新包（Update Package）**：发布渠道提供的可下载产物。当前形态为未签名 DMG，下载后由用户手动完成替换安装。
 
-**滚动构建（Rolling Build）**：每次合入主干后更新的 latest 预发布，与打标签的正式发布相区分。
+**滚动构建（Rolling Build）**：每次合入主干后更新的 latest Release（非 prerelease，但不占 Latest 徽章），与打标签的正式发布相区分。
 
 **自动安装（Automatic Install）**：更新包下载后免手动替换的安装方式。依赖代码签名，当前不可用。
