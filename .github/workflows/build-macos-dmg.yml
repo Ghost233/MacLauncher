@@ -2,6 +2,10 @@ name: Build macOS DMG (reusable)
 
 # 可复用构建管线：release.yml（v* tag）与 rolling.yml（main）共用。
 # 输入 version 仅用于产物命名与清单（正式发布传 pubspec 版本，滚动构建传 latest）。
+#
+# 第三方 action 引入说明（工程规范 E12）：subosito/flutter-action 解决 CI 中
+# Flutter SDK 精确固定与缓存问题，替代手写下载脚本（可读性与维护性更好）；
+# 版本固定为 3.47.6 stable，与本机 ~/flutter 开发基线一致，macos-15 runner 官方支持。
 
 on:
   workflow_call:
@@ -13,7 +17,9 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    # 钉 macos-15：与 Flutter 3.47.6 钉版本同理，避免 *-latest 漂移导致 CI 结果不可复现。
+    runs-on: macos-15
+    timeout-minutes: 30
     permissions:
       contents: read
     env:

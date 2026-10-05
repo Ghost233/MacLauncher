@@ -2,6 +2,7 @@ name: Rolling (latest)
 
 # 合入 main 触发滚动构建：
 # 同一构建打包管线，滚动更新名为 latest 的 prerelease（--clobber 覆盖旧 asset）。
+# latest tag 每次随 main 前移（force-update），Release 页 source 快照即当前 main，
 # 与打 tag 的正式发布（release.yml）相区分，见 CONTEXT.md「滚动构建」。
 
 on:
@@ -16,24 +17,33 @@ concurrency:
   group: rolling-latest
   cancel-in-progress: false
 
+env:
+  ROLLING_TAG: latest
+
 jobs:
   build:
     uses: ./.github/workflows/build-macos-dmg.yml
     with:
-      version: latest
+      version: ${{ env.ROLLING_TAG }}
     permissions:
       contents: read
 
   publish:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
-          name: maclauncher-dmg-latest
+          name: maclauncher-dmg-${{ env.ROLLING_TAG }}
           path: dist
 
       - name: Rolling-update latest prerelease
@@ -41,12 +51,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          # latest tag 随 main 前移：gh release edit --target 对已有 tag 无效
+          # （GitHub 仅在 tag 不存在时才用 target_commitish 建 tag），因此先
+          # force-move tag 到当前 commit，再覆盖 asset，保证 Release 页 source
+          # 快照与 notes 声称的 main@SHA 一致。
+          # latest 不匹配 release.yml 的 v* 触发模式，本次推 tag 不会引发正式发布。
+          git tag -f "$ROLLING_TAG" "$GITHUB_SHA"
+          git push -f origin "refs/tags/$ROLLING_TAG"
           # 首次没有 latest 时创建；之后每次用 --clobber 覆盖同名 asset。
-          if ! gh release view latest >/dev/null 2>&1; then
-            gh release create latest \
+          if ! gh release view "$ROLLING_TAG" >/dev/null 2>&1; then
+            gh release create "$ROLLING_TAG" \
               --prerelease \
-              --title "latest (rolling)" \
-              --notes "滚动构建：随 main 更新。"
+              --title "$ROLLING_TAG (rolling)" \
+              --notes "滚动构建：随 main 更新；latest tag 随 main 前移，source 快照即当前 main。"
           fi
-          gh release upload latest dist/* --clobber
-          gh release edit latest --notes "滚动构建：main@${GITHUB_SHA:0:7}（$(date -u +%Y-%m-%d) UTC 构建）。DMG 未签名，完整性核对见 SHA256SUMS.txt。"
+          gh release upload "$ROLLING_TAG" dist/* --clobber
+          gh release edit "$ROLLING_TAG" --notes "滚动构建：main@${GITHUB_SHA:0:7}（$(date -u +%Y-%m-%d) UTC 构建）。latest tag 随 main 前移，source 快照即当前 main。DMG 未签名，完整性核对见 SHA256SUMS.txt。"
