@@ -3,6 +3,13 @@ import FlutterMacOS
 import ServiceManagement
 
 class MainFlutterWindow: NSWindow {
+  #if DEBUG
+  // Debug 专用：报告窗口始终可见，让 Flutter 在窗口被遮挡/应用退到后台时
+  // 继续调度帧——自动化验收（VM service 截图/渲染树）依赖实时画面。
+  // 仅影响 debug 构建，release 行为不变。
+  override var occlusionState: NSWindow.OcclusionState { .visible }
+  #endif
+
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame
