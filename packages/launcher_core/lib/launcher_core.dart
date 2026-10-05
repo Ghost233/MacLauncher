@@ -2,6 +2,7 @@
 /// registry, independent of the Flutter UI.
 library;
 
+export 'src/app_update_service.dart';
 export 'src/association.dart';
 export 'src/autostart.dart';
 export 'src/binding_lookup.dart';

@@ -71,6 +71,7 @@ Future<void> main() async {
       refresher: refresher,
       operations: operations,
       handoff: handoff,
+      updateService: AppUpdateService(layout: layout),
     ),
   );
 }
@@ -85,6 +86,7 @@ class MacLauncherApp extends StatelessWidget {
     this.serverError,
     this.operations,
     this.handoff,
+    this.updateService,
   });
 
   final LauncherServer? server;
@@ -94,6 +96,7 @@ class MacLauncherApp extends StatelessWidget {
   final ConfigRefresher refresher;
   final ServiceOperations? operations;
   final EntryHandoffCoordinator? handoff;
+  final AppUpdateService? updateService;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -108,6 +111,7 @@ class MacLauncherApp extends StatelessWidget {
       refresher: refresher,
       operations: operations,
       handoff: handoff,
+      updateService: updateService,
     ),
   );
 }
@@ -124,6 +128,7 @@ class ManagementPage extends StatefulWidget {
     this.serverError,
     this.operations,
     this.handoff,
+    this.updateService,
   });
 
   final LauncherServer? server;
@@ -133,6 +138,7 @@ class ManagementPage extends StatefulWidget {
   final ConfigRefresher refresher;
   final ServiceOperations? operations;
   final EntryHandoffCoordinator? handoff;
+  final AppUpdateService? updateService;
 
   @override
   State<ManagementPage> createState() => _ManagementPageState();
@@ -429,6 +435,7 @@ class _ManagementPageState extends State<ManagementPage> {
                           binding: binding,
                           registry: registry,
                           operations: widget.operations,
+                          updateService: widget.updateService,
                           preferences: widget.preferences,
                           refresher: widget.refresher,
                           handoffStatus: handoffStatusOf(binding.projectId),
