@@ -175,20 +175,34 @@ class EntryHandoffCoordinator {
     final entries = _managedSession.entries.toList();
     _managedSession.clear();
     for (final entry in entries) {
-      _emit(entry.key, EntryHandoffStatus.unmanaged);
-      final session = _server.sessionFor(entry.key);
-      if (session == null || session.launcherSessionId != entry.value) {
-        continue;
-      }
-      try {
-        await session.sendRequest(
-          kMethodSetEntryManaged,
-          params: {'managed': false},
-          timeout: _releaseTimeout,
-        );
-      } catch (_) {
-        // 尽力而为；应用侧会按心跳超时自行归还。
-      }
+      await _release(entry.key, entry.value);
+    }
+  }
+
+  /// 解除绑定路径：尽力归还单个项目的统一入口。
+  ///
+  /// 只触碰当前 managed 会话；项目未受管或不在线时是 no-op。失败被吞掉，
+  /// 不阻塞解绑——应用/SDK 侧心跳归还是兜底。永不发送 recycle。
+  Future<void> release(String projectId) async {
+    final sessionId = _managedSession.remove(projectId);
+    if (sessionId == null) return;
+    await _release(projectId, sessionId);
+  }
+
+  Future<void> _release(String projectId, String sessionId) async {
+    _emit(projectId, EntryHandoffStatus.unmanaged);
+    final session = _server.sessionFor(projectId);
+    if (session == null || session.launcherSessionId != sessionId) {
+      return;
+    }
+    try {
+      await session.sendRequest(
+        kMethodSetEntryManaged,
+        params: {'managed': false},
+        timeout: _releaseTimeout,
+      );
+    } catch (_) {
+      // 尽力而为；应用侧会按心跳超时自行归还。
     }
   }
 

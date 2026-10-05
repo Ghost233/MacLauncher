@@ -99,6 +99,17 @@ class BindingStore implements BindingLookup {
     return binding;
   }
 
+  /// Low-level removal used by the unbind flow: drops the record for the
+  /// project identity. Throws [StateError] when no such identity exists.
+  Future<void> remove(String projectId) async {
+    final index = _bindings.indexWhere((b) => b.projectId == projectId);
+    if (index < 0) {
+      throw StateError('no binding for project identity: $projectId');
+    }
+    _bindings.removeAt(index);
+    await _save();
+  }
+
   ProjectBinding? byProjectId(String projectId) {
     for (final binding in _bindings) {
       if (binding.projectId == projectId) return binding;
