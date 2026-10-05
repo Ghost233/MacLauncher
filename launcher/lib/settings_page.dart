@@ -25,8 +25,11 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  // All three rows read this local state (single source of truth for the
+  // page); it is initialized from the store once.
   late bool _checkOnLaunch;
   late bool _autoDownload;
+  late bool _autoInstall;
   var _checking = false;
 
   @override
@@ -34,15 +37,26 @@ class _SettingsPageState extends State<SettingsPage> {
     super.initState();
     _checkOnLaunch = widget.preferences.updateCheckOnLaunch;
     _autoDownload = widget.preferences.updateAutoDownload;
+    _autoInstall = widget.preferences.updateAutoInstall;
   }
 
+  /// Optimistic toggle: apply immediately so the switch never feels stuck,
+  /// persist in the background, and roll back with a hint if the atomic
+  /// write fails.
   Future<void> _toggle({
     required bool value,
     required Future<void> Function(bool) persist,
-    required void Function() apply,
+    required void Function(bool) apply,
   }) async {
-    await persist(value);
-    if (mounted) setState(apply);
+    setState(() => apply(value));
+    try {
+      await persist(value);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => apply(!value));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('偏好保存失败，请重试。')));
+    }
   }
 
   Future<void> _checkNow() async {
@@ -81,7 +95,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       onChanged: (value) => _toggle(
                         value: value,
                         persist: widget.preferences.setUpdateCheckOnLaunch,
-                        apply: () => _checkOnLaunch = value,
+                        apply: (v) => _checkOnLaunch = v,
                       ),
                     ),
                     _SwitchRow(
@@ -91,13 +105,13 @@ class _SettingsPageState extends State<SettingsPage> {
                       onChanged: (value) => _toggle(
                         value: value,
                         persist: widget.preferences.setUpdateAutoDownload,
-                        apply: () => _autoDownload = value,
+                        apply: (v) => _autoDownload = v,
                       ),
                     ),
                     _SwitchRow(
                       key: const ValueKey('update-auto-install'),
                       label: '自动安装',
-                      value: widget.preferences.updateAutoInstall,
+                      value: _autoInstall,
                       // Reserved preference (ADR 0002): stays disabled until
                       // a signing certificate exists.
                       onChanged: null,

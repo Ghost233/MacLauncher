@@ -108,8 +108,19 @@ class PreferenceStore {
       _setUpdatePreference(_keyAutoInstall, enabled);
 
   Future<void> _setUpdatePreference(String key, bool value) async {
+    final previous = _updatePrefs[key];
     _updatePrefs[key] = value;
-    await _save();
+    try {
+      await _save();
+    } catch (_) {
+      // Keep the in-memory state consistent with what is on disk.
+      if (previous == null) {
+        _updatePrefs.remove(key);
+      } else {
+        _updatePrefs[key] = previous;
+      }
+      rethrow;
+    }
   }
 
   Future<void> _save() async {

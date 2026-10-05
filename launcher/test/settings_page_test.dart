@@ -82,26 +82,58 @@ void main() {
 
       await tester.tap(_switchOf('update-auto-download'));
       await tester.pump();
-      await waitFor(() async => (await loadPrefs()).updateAutoDownload);
-      await tester.pump();
+      // Optimistic: the UI applies before the write lands.
       expect(
         tester.widget<Switch>(_switchOf('update-auto-download')).value,
         isTrue,
       );
+      await waitFor(() async => (await loadPrefs()).updateAutoDownload);
 
       await tester.tap(_switchOf('update-check-on-launch'));
-      await tester.pump();
-      await waitFor(() async => !(await loadPrefs()).updateCheckOnLaunch);
       await tester.pump();
       expect(
         tester.widget<Switch>(_switchOf('update-check-on-launch')).value,
         isFalse,
       );
+      await waitFor(() async => !(await loadPrefs()).updateCheckOnLaunch);
 
       // Persisted: a fresh store instance sees the same values.
       final reloaded = await loadPrefs();
       expect(reloaded.updateAutoDownload, isTrue);
       expect(reloaded.updateCheckOnLaunch, isFalse);
+    });
+  });
+
+  testWidgets('持久化失败时回滚开关并提示', (tester) async {
+    await tester.runAsync(() async {
+      // The parent path is a regular file, so every atomic write fails.
+      final blocker = File('${directory.path}/blocked')..writeAsStringSync('x');
+      final prefs = await PreferenceStore.load(
+        '${blocker.path}/preferences.json',
+      );
+      await pumpSettings(tester, prefs);
+
+      await tester.tap(_switchOf('update-check-on-launch'));
+      await tester.pump();
+      // Optimistically applied first…
+      expect(
+        tester.widget<Switch>(_switchOf('update-check-on-launch')).value,
+        isFalse,
+      );
+
+      // …then rolled back once the write fails, with a visible hint. Pump
+      // while polling: rollback is a setState, which needs a frame.
+      var rolledBack = false;
+      for (var i = 0; i < 200 && !rolledBack; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        await tester.pump();
+        rolledBack = tester
+            .widget<Switch>(_switchOf('update-check-on-launch'))
+            .value;
+      }
+      expect(rolledBack, isTrue, reason: 'switch should roll back on failure');
+      expect(find.text('偏好保存失败，请重试。'), findsOneWidget);
+      expect(prefs.updateCheckOnLaunch, isTrue);
     });
   });
 
