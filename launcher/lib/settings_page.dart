@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:launcher_core/launcher_core.dart';
 
+import 'self_update_flow.dart';
 import 'theme.dart';
 
 /// Manual update-check entry. The real checker arrives with the update
@@ -15,10 +16,16 @@ class SettingsPage extends StatefulWidget {
     super.key,
     required this.preferences,
     required this.onCheckNow,
+    this.selfUpdate,
   });
 
   final PreferenceStore preferences;
   final UpdateCheckCallback onCheckNow;
+
+  /// The real self-update flow (#31). When injected, 立即检查更新 runs the
+  /// checker and the page renders 有新版 / 已是最新 / 失败 from the typed
+  /// result; when absent the legacy [onCheckNow] placeholder runs instead.
+  final SelfUpdateFlow? selfUpdate;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -31,6 +38,10 @@ class _SettingsPageState extends State<SettingsPage> {
   late bool _autoDownload;
   late bool _autoInstall;
   var _checking = false;
+
+  /// Latest manual check outcome; null until the first check or when the
+  /// legacy [SettingsPage.onCheckNow] placeholder path is in use.
+  UpdateCheckResult? _checkResult;
 
   @override
   void initState() {
@@ -63,9 +74,87 @@ class _SettingsPageState extends State<SettingsPage> {
     if (_checking) return;
     setState(() => _checking = true);
     try {
-      await widget.onCheckNow();
+      final flow = widget.selfUpdate;
+      if (flow != null) {
+        // Real implementation (#31): the typed result is rendered below the
+        // button; failures stay visible here instead of a toast.
+        final result = await flow.checkNow();
+        if (mounted) setState(() => _checkResult = result);
+      } else {
+        await widget.onCheckNow();
+      }
     } finally {
       if (mounted) setState(() => _checking = false);
+    }
+  }
+
+  /// Three-state manual check rendering: 有新版 (with a download entry when
+  /// the release carries a DMG address) / 已是最新 / 失败. Text comes only
+  /// from the typed [UpdateCheckResult]; nothing is invented.
+  Widget _checkResultArea() {
+    final result = _checkResult;
+    if (result == null) return const SizedBox.shrink();
+    switch (result) {
+      case UpdateCheckFailure(:final reason):
+        return _ResultLine(
+          key: const ValueKey('update-check-failed'),
+          color: AppTheme.danger,
+          text: '检查失败：$reason',
+        );
+      case UpdateCheckSuccess(hasUpdate: false, :final latestVersion):
+        return _ResultLine(
+          key: const ValueKey('update-check-latest'),
+          color: AppTheme.ok,
+          text: '已是最新版本（$latestVersion）。',
+        );
+      case UpdateCheckSuccess(
+        hasUpdate: true,
+        :final latestVersion,
+        :final dmgDownloadUrl,
+        :final sha256,
+      ):
+        if (dmgDownloadUrl == null) {
+          return _ResultLine(
+            key: const ValueKey('update-check-no-url'),
+            color: AppTheme.warn,
+            text: '发现新版本 $latestVersion，但该版本未提供下载地址。',
+          );
+        }
+        return Row(
+          key: const ValueKey('update-check-available'),
+          children: [
+            Expanded(
+              child: Text(
+                '发现新版本 $latestVersion。',
+                style: AppTheme.caption.copyWith(color: AppTheme.accent),
+              ),
+            ),
+            FilledButton(
+              key: const ValueKey('update-download-entry'),
+              onPressed: () {
+                // Starts the shared flow; the management page surfaces the
+                // progress/result dialog on top of this route.
+                // ignore: discarded_futures
+                widget.selfUpdate?.startDownload(
+                  latestVersion: latestVersion,
+                  downloadUrl: dmgDownloadUrl,
+                  sha256: sha256,
+                );
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.accent,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(0, 28),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                textStyle: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              child: const Text('下载新版本'),
+            ),
+          ],
+        );
     }
   }
 
@@ -157,6 +246,10 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                       ],
                     ),
+                    if (_checkResult != null) ...[
+                      const SizedBox(height: AppTheme.gapSm),
+                      _checkResultArea(),
+                    ],
                   ],
                 ),
               ),
@@ -213,5 +306,18 @@ class _SwitchRow extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// One colored result line under the 立即检查更新 button.
+class _ResultLine extends StatelessWidget {
+  const _ResultLine({super.key, required this.color, required this.text});
+
+  final Color color;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(text, style: AppTheme.caption.copyWith(color: color));
   }
 }

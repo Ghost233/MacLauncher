@@ -19,6 +19,7 @@ export 'src/manifest.dart';
 export 'src/operations.dart';
 export 'src/preferences.dart';
 export 'src/registry.dart';
+export 'src/self_update_service.dart';
 export 'src/server.dart';
 export 'src/status_observer.dart';
 export 'src/update_checker.dart';

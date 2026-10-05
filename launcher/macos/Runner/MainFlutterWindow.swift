@@ -59,6 +59,34 @@ class MainFlutterWindow: NSWindow {
             message: "登录项需要 macOS 13 或更高版本",
             details: nil))
         }
+      case "appVersion":
+        // The build channel for the launcher's own version: `flutter build`
+        // injects the pubspec version into these Info.plist keys, so the UI
+        // never hardcodes a version string (issue #31).
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? ""
+        let build = info?["CFBundleVersion"] as? String ?? ""
+        result(short.isEmpty ? nil : (build.isEmpty ? short : "\(short)+\(build)"))
+      case "relaunch":
+        // Hand the running instance to a fresh process, then terminate this
+        // one. The launcher never replaces its own .app (ADR 0002); the user
+        // has already swapped the binary from the DMG by this point.
+        let bundleURL = Bundle.main.bundleURL
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
+        task.arguments = ["-n", bundleURL.path]
+        do {
+          try task.run()
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            NSApp.terminate(nil)
+          }
+          result(nil)
+        } catch {
+          result(FlutterError(
+            code: "relaunch",
+            message: error.localizedDescription,
+            details: nil))
+        }
       default:
         result(FlutterMethodNotImplemented)
       }
