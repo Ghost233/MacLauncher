@@ -3,3 +3,7 @@ build/
 .scratch/
 .DS_Store
 example/minimal_app/build/
+
+# Apple original downloads: local reference only
+/docs/design/apple-macos/snapshots/
+/docs/design/apple-macos/assets/

@@ -110,6 +110,50 @@ void main() {
       final reloaded = await PreferenceStore.load(prefsPath);
       expect(reloaded.isLoginStartEnabled('proj-a', 'svc-1'), isTrue);
     });
+
+    test(
+      'update preferences default on an old file without the section',
+      () async {
+        // A preference file written before update preferences existed.
+        File(prefsPath).writeAsStringSync('{"proj-a": {"svc-1": true}}');
+
+        final store = await PreferenceStore.load(prefsPath);
+        expect(store.updateCheckOnLaunch, isTrue);
+        expect(store.updateAutoDownload, isFalse);
+        expect(store.updateAutoInstall, isFalse);
+        // The old login-start entries still load, and the reserved section
+        // never leaks into the project view.
+        expect(store.isLoginStartEnabled('proj-a', 'svc-1'), isTrue);
+        expect(store.projects, {'proj-a'});
+      },
+    );
+
+    test('update preferences round-trip through save and reload', () async {
+      final store = await PreferenceStore.load(prefsPath);
+      await store.setUpdateCheckOnLaunch(false);
+      await store.setUpdateAutoDownload(true);
+
+      final reloaded = await PreferenceStore.load(prefsPath);
+      expect(reloaded.updateCheckOnLaunch, isFalse);
+      expect(reloaded.updateAutoDownload, isTrue);
+      expect(reloaded.updateAutoInstall, isFalse);
+
+      final mode = FileStat.statSync(prefsPath).mode & 0xFFF;
+      expect(mode, int.parse('600', radix: 8));
+      // The updates section is not a project.
+      expect(reloaded.projects, isEmpty);
+    });
+
+    test('update and login-start preferences coexist in one file', () async {
+      final store = await PreferenceStore.load(prefsPath);
+      await store.setLoginStartEnabled('proj-a', 'svc-1', true);
+      await store.setUpdateAutoDownload(true);
+
+      final reloaded = await PreferenceStore.load(prefsPath);
+      expect(reloaded.isLoginStartEnabled('proj-a', 'svc-1'), isTrue);
+      expect(reloaded.updateAutoDownload, isTrue);
+      expect(reloaded.projects, {'proj-a'});
+    });
   });
 
   group('AutostartNotifier', () {
@@ -147,14 +191,14 @@ void main() {
       final notifier = AutostartNotifier(preferences: prefs);
       await notifier.runOnce(
         bindings: bindings,
-        startService: (_, __) async {
+        startService: (_, _) async {
           calls++;
           return const OperationAcknowledged();
         },
       );
       final second = await notifier.runOnce(
         bindings: bindings,
-        startService: (_, __) async {
+        startService: (_, _) async {
           calls++;
           return const OperationAcknowledged();
         },
@@ -180,7 +224,7 @@ void main() {
         final notifier = AutostartNotifier(preferences: prefs);
         final report = await notifier.runOnce(
           bindings: bindings,
-          startService: (_, __) async {
+          startService: (_, _) async {
             calls++;
             return const OperationAcknowledged();
           },

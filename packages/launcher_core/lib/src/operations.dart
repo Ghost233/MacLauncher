@@ -111,9 +111,42 @@ class LogsUnknown extends LogsResult {
   final String reason;
 }
 
-/// Which services requests may be routed to: only confirmed binding scope.
+/// Result of a version status query (版本状况). Unsupported (capability
+/// absent), unknown (timeout/disconnect/malformed) and the application
+/// answer are distinct so the UI never confuses a missing capability with
+/// a failed update query.
+sealed class VersionStatusResult {
+  const VersionStatusResult();
+}
+
+class VersionStatusSnapshot extends VersionStatusResult {
+  const VersionStatusSnapshot(this.status);
+
+  /// Verbatim application-reported answer; never locally fabricated. Its
+  /// [VersionStatus.state] may itself be failure or unsupported.
+  final VersionStatus status;
+}
+
+/// The application did not declare the versionStatus capability (or an
+/// older SDK rejected the method); nothing was sent or nothing applies.
+class VersionStatusUnsupported extends VersionStatusResult {
+  const VersionStatusUnsupported();
+}
+
+class VersionStatusUnknown extends VersionStatusResult {
+  const VersionStatusUnknown(this.reason);
+
+  final String reason;
+}
+
+/// Which projects/services requests may be routed to: only confirmed
+/// binding scope.
 abstract class ServiceScopeLookup {
   bool isServiceInScope(String projectId, String serviceId);
+
+  /// App-level requests (e.g. version status) are scoped to the project
+  /// binding itself.
+  bool isProjectInScope(String projectId);
 }
 
 /// Scope backed by the local binding store.
@@ -128,19 +161,20 @@ class BindingServiceScope implements ServiceScopeLookup {
     if (binding == null) return false;
     return binding.services.any((s) => s.id == serviceId);
   }
+
+  @override
+  bool isProjectInScope(String projectId) =>
+      _store.byProjectId(projectId) != null;
 }
 
 /// Launcher-side service operations over live SDK sessions.
 class ServiceOperations {
   ServiceOperations({
-    required LauncherServer server,
-    required ServiceScopeLookup scope,
-    Duration timeout = kDefaultRequestTimeout,
-    LaunchOrchestrator? launcher,
-  }) : _server = server,
-       _scope = scope,
-       _timeout = timeout,
-       _launcher = launcher;
+    required this._server,
+    required this._scope,
+    this._timeout = kDefaultRequestTimeout,
+    this._launcher,
+  });
 
   final LauncherServer _server;
   final ServiceScopeLookup _scope;
@@ -253,6 +287,40 @@ class ServiceOperations {
       return const StatusUnknown('timeout');
     } catch (e) {
       return StatusUnknown('$e');
+    }
+  }
+
+  /// Queries the application's version status (版本状况). App-level: scoped
+  /// to the project binding, sent only when the application declared the
+  /// versionStatus capability, never pulls the application up.
+  Future<VersionStatusResult> versionStatus(String projectId) async {
+    if (!_scope.isProjectInScope(projectId)) {
+      return VersionStatusUnknown('project out of binding scope: $projectId');
+    }
+    final project = _server.registry.byProject(projectId);
+    if (project == null) {
+      return const VersionStatusUnknown('application not connected');
+    }
+    if (!project.capabilities.supportsApp(kMethodVersionStatus)) {
+      return const VersionStatusUnsupported();
+    }
+    try {
+      final response = await _server
+          .sessionFor(projectId)!
+          .sendRequest(kMethodVersionStatus, timeout: _timeout);
+      final error = (response['error'] as Map?)?.cast<String, Object?>();
+      if (error != null) {
+        return error['code'] == ProtocolError.unsupported
+            ? const VersionStatusUnsupported()
+            : VersionStatusUnknown('${error['code']}: ${error['message']}');
+      }
+      final result = (response['result'] as Map?)?.cast<String, Object?>();
+      if (result == null) return const VersionStatusUnknown('empty result');
+      return VersionStatusSnapshot(VersionStatus.fromJson(result));
+    } on TimeoutException {
+      return const VersionStatusUnknown('timeout');
+    } catch (e) {
+      return VersionStatusUnknown('$e');
     }
   }
 

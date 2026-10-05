@@ -7,7 +7,40 @@ import 'package:maclauncher_sdk/maclauncher_sdk.dart';
 
 import 'live_debug.dart';
 import 'project_card.dart';
+import 'self_update_dialog.dart';
+import 'self_update_flow.dart';
+import 'settings_page.dart';
 import 'theme.dart';
+
+/// Resolves the launcher's own version from the existing build channel: the
+/// macOS bundle's Info.plist, which `flutter build` populates from the
+/// pubspec `version` (CFBundleShortVersionString/CFBundleVersion). An
+/// `--dart-define=APP_VERSION=…` override wins for development builds.
+/// Returns null when neither channel is available (e.g. tests).
+Future<String?> _resolveCurrentVersion() async {
+  const override = String.fromEnvironment('APP_VERSION');
+  if (override.isNotEmpty) return override;
+  try {
+    return await const MethodChannel('maclauncher/native')
+        .invokeMethod<String>('appVersion');
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Relaunches the launcher through the native channel: macOS `open -n` on
+/// the bundle, then terminate this process. Returns null once initiated.
+Future<String?> _relaunchViaNativeChannel() async {
+  try {
+    await const MethodChannel('maclauncher/native')
+        .invokeMethod<void>('relaunch');
+    return null;
+  } on PlatformException catch (e) {
+    return e.message ?? '重启失败。';
+  } catch (e) {
+    return '$e';
+  }
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -61,6 +94,15 @@ Future<void> main() async {
     error = e;
   }
 
+  final selfUpdateFlow = SelfUpdateFlow(
+    preferences: prefs,
+    service: SelfUpdateService(
+      layout: layout,
+      versionResolver: _resolveCurrentVersion,
+    ),
+    relauncher: _relaunchViaNativeChannel,
+  );
+
   runApp(
     MacLauncherApp(
       server: server,
@@ -70,6 +112,8 @@ Future<void> main() async {
       refresher: refresher,
       operations: operations,
       handoff: handoff,
+      updateService: AppUpdateService(layout: layout),
+      selfUpdateFlow: selfUpdateFlow,
     ),
   );
 }
@@ -84,6 +128,8 @@ class MacLauncherApp extends StatelessWidget {
     this.serverError,
     this.operations,
     this.handoff,
+    this.updateService,
+    this.selfUpdateFlow,
   });
 
   final LauncherServer? server;
@@ -93,6 +139,8 @@ class MacLauncherApp extends StatelessWidget {
   final ConfigRefresher refresher;
   final ServiceOperations? operations;
   final EntryHandoffCoordinator? handoff;
+  final AppUpdateService? updateService;
+  final SelfUpdateFlow? selfUpdateFlow;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -107,6 +155,8 @@ class MacLauncherApp extends StatelessWidget {
       refresher: refresher,
       operations: operations,
       handoff: handoff,
+      updateService: updateService,
+      selfUpdateFlow: selfUpdateFlow,
     ),
   );
 }
@@ -123,6 +173,8 @@ class ManagementPage extends StatefulWidget {
     this.serverError,
     this.operations,
     this.handoff,
+    this.updateService,
+    this.selfUpdateFlow,
   });
 
   final LauncherServer? server;
@@ -132,6 +184,8 @@ class ManagementPage extends StatefulWidget {
   final ConfigRefresher refresher;
   final ServiceOperations? operations;
   final EntryHandoffCoordinator? handoff;
+  final AppUpdateService? updateService;
+  final SelfUpdateFlow? selfUpdateFlow;
 
   @override
   State<ManagementPage> createState() => _ManagementPageState();
@@ -160,10 +214,36 @@ class _ManagementPageState extends State<ManagementPage> {
       });
     }
     _loadLoginItemStatus();
+    final flow = widget.selfUpdateFlow;
+    if (flow != null) {
+      flow.addListener(_syncSelfUpdateDialog);
+      // Silent launch-time check (「启动时检查」偏好控制); failures stay
+      // silent by design (issue #31).
+      unawaited(flow.checkOnLaunch());
+    }
+  }
+
+  bool _selfUpdateDialogOpen = false;
+
+  /// Opens the self-update dialog when the flow leaves idle; the dialog
+  /// itself follows state transitions and pops when the flow settles.
+  void _syncSelfUpdateDialog() {
+    final flow = widget.selfUpdateFlow;
+    if (flow == null || _selfUpdateDialogOpen || !mounted) return;
+    if (flow.state is SelfUpdateIdle) return;
+    _selfUpdateDialogOpen = true;
+    unawaited(
+      showSelfUpdateDialog(context, flow).whenComplete(() {
+        _selfUpdateDialogOpen = false;
+        // A new state may have arrived while the dialog was closing.
+        _syncSelfUpdateDialog();
+      }),
+    );
   }
 
   @override
   void dispose() {
+    widget.selfUpdateFlow?.removeListener(_syncSelfUpdateDialog);
     _registrySub?.cancel();
     _handoffSub?.cancel();
     super.dispose();
@@ -307,6 +387,20 @@ class _ManagementPageState extends State<ManagementPage> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => SettingsPage(
+          preferences: widget.preferences,
+          selfUpdate: widget.selfUpdateFlow,
+          // Fallback when no self-update flow is wired (tests): the
+          // placeholder seam from #32.
+          onCheckNow: () async => _toast('更新检查将在后续版本接入。'),
+        ),
+      ),
+    );
+  }
+
   Future<void> _alert(String title, String message) => showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
@@ -350,6 +444,12 @@ class _ManagementPageState extends State<ManagementPage> {
               padding: const EdgeInsets.symmetric(horizontal: 14),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
+          ),
+          const SizedBox(width: AppTheme.gapMd),
+          IconButton(
+            tooltip: '设置',
+            onPressed: _openSettings,
+            icon: const Icon(Icons.settings_outlined),
           ),
           const SizedBox(width: AppTheme.gapMd),
         ],
@@ -404,13 +504,12 @@ class _ManagementPageState extends State<ManagementPage> {
                   children: [
                     for (final binding in bindings)
                       Padding(
-                        padding: const EdgeInsets.only(
-                          bottom: AppTheme.gapLg,
-                        ),
+                        padding: const EdgeInsets.only(bottom: AppTheme.gapLg),
                         child: ProjectCard(
                           binding: binding,
                           registry: registry,
                           operations: widget.operations,
+                          updateService: widget.updateService,
                           preferences: widget.preferences,
                           refresher: widget.refresher,
                           handoffStatus: handoffStatusOf(binding.projectId),

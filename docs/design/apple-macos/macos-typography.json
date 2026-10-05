@@ -1,0 +1,86 @@
+[
+  [
+    "Text style",
+    "Weight",
+    "Size (points)",
+    "Line height (points)",
+    "Emphasized weight"
+  ],
+  [
+    "Large Title",
+    "Regular",
+    "26",
+    "32",
+    "Bold"
+  ],
+  [
+    "Title 1",
+    "Regular",
+    "22",
+    "26",
+    "Bold"
+  ],
+  [
+    "Title 2",
+    "Regular",
+    "17",
+    "22",
+    "Bold"
+  ],
+  [
+    "Title 3",
+    "Regular",
+    "15",
+    "20",
+    "Semibold"
+  ],
+  [
+    "Headline",
+    "Bold",
+    "13",
+    "16",
+    "Heavy"
+  ],
+  [
+    "Body",
+    "Regular",
+    "13",
+    "16",
+    "Semibold"
+  ],
+  [
+    "Callout",
+    "Regular",
+    "12",
+    "15",
+    "Semibold"
+  ],
+  [
+    "Subheadline",
+    "Regular",
+    "11",
+    "14",
+    "Semibold"
+  ],
+  [
+    "Footnote",
+    "Regular",
+    "10",
+    "13",
+    "Semibold"
+  ],
+  [
+    "Caption 1",
+    "Regular",
+    "10",
+    "13",
+    "Medium"
+  ],
+  [
+    "Caption 2",
+    "Medium",
+    "10",
+    "13",
+    "Semibold"
+  ]
+]

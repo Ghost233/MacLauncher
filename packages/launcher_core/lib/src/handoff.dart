@@ -47,14 +47,11 @@ enum HandoffRequestOutcome {
 /// 永远不能标记新会话（按 launcherSessionId 守卫）。
 class EntryHandoffCoordinator {
   EntryHandoffCoordinator({
-    required LauncherServer server,
-    required Future<bool> Function(String projectId) statusQuery,
-    Duration requestTimeout = const Duration(seconds: 30),
-    Duration releaseTimeout = const Duration(seconds: 3),
-  }) : _server = server,
-       _statusQuery = statusQuery,
-       _requestTimeout = requestTimeout,
-       _releaseTimeout = releaseTimeout {
+    required this._server,
+    required this._statusQuery,
+    this._requestTimeout = const Duration(seconds: 30),
+    this._releaseTimeout = const Duration(seconds: 3),
+  }) {
     _subscription = _server.registry.changes.listen(_onRegistryChange);
     for (final project in _server.registry.connected) {
       _onConnected(project);

@@ -42,7 +42,7 @@ class EndpointLock {
         );
       }
       await handle.truncate(0);
-      await handle.writeString('${pid}\n');
+      await handle.writeString('$pid\n');
       await handle.flush();
       return EndpointLock._(file, handle);
     } catch (_) {

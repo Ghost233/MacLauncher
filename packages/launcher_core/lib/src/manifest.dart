@@ -15,6 +15,7 @@ enum ManifestRejection {
   emptyProjectId,
   emptyServiceId,
   duplicateServiceId,
+  reservedProjectId,
 }
 
 class ManifestException implements Exception {
@@ -149,6 +150,14 @@ class ProjectManifest {
       throw ManifestException(
         ManifestRejection.emptyProjectId,
         'project.id is required',
+      );
+    }
+    // PreferenceStore keys its map by project id and reserves '@'-prefixed
+    // top-level keys (e.g. '@updates') for launcher-level preferences.
+    if (projectId.startsWith('@')) {
+      throw ManifestException(
+        ManifestRejection.reservedProjectId,
+        "project.id must not start with '@' (reserved for launcher-level keys)",
       );
     }
 

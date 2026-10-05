@@ -9,7 +9,21 @@ environment:
 resolution: workspace
 
 dependencies:
+  # E12: used by chunked_downloader.dart for whole-payload sha256
+  # verification. 3.0.7 was already pinned in the workspace lockfile as a
+  # transitive dependency; this only promotes it to a direct dependency,
+  # so pubspec.lock is unchanged.
+  crypto: ^3.0.7
   maclauncher_sdk: ^0.1.0
+  # E12: used by update_checker.dart for SemVer parsing and precedence.
+  # 2.2.1 was already pinned in the workspace lockfile as a transitive
+  # dependency; this only promotes it to a direct dependency, so
+  # pubspec.lock is unchanged.
+  pub_semver: ^2.2.1
 
 dev_dependencies:
+  # E12: dev-only; the controlled example peer is imported by real-socket
+  # tests (fake business + shared version-status demo constants). Workspace
+  # member, already pinned in the lockfile.
+  minimal_app: ^0.1.0
   test: ^1.25.0

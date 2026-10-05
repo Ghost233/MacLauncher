@@ -1,0 +1,108 @@
+{
+  "schema_version": 1,
+  "scope": "Shared macOS-first Flutter design reference; not executable app configuration",
+  "typography": {
+    "provenance": "Apple HIG macOS built-in text styles",
+    "source_url": "https://developer.apple.com/design/human-interface-guidelines/typography#macOS-built-in-text-styles",
+    "source_json": "snapshots/typography.json",
+    "units": "macOS points; default Flutter mapping uses logical pixels, with platform/text-scaling verification",
+    "styles": {
+      "Large Title": {
+        "font_size": 26,
+        "line_height": 32,
+        "font_weight": 400,
+        "emphasized_weight": 700
+      },
+      "Title 1": {
+        "font_size": 22,
+        "line_height": 26,
+        "font_weight": 400,
+        "emphasized_weight": 700
+      },
+      "Title 2": {
+        "font_size": 17,
+        "line_height": 22,
+        "font_weight": 400,
+        "emphasized_weight": 700
+      },
+      "Title 3": {
+        "font_size": 15,
+        "line_height": 20,
+        "font_weight": 400,
+        "emphasized_weight": 600
+      },
+      "Headline": {
+        "font_size": 13,
+        "line_height": 16,
+        "font_weight": 700,
+        "emphasized_weight": 800
+      },
+      "Body": {
+        "font_size": 13,
+        "line_height": 16,
+        "font_weight": 400,
+        "emphasized_weight": 600
+      },
+      "Callout": {
+        "font_size": 12,
+        "line_height": 15,
+        "font_weight": 400,
+        "emphasized_weight": 600
+      },
+      "Subheadline": {
+        "font_size": 11,
+        "line_height": 14,
+        "font_weight": 400,
+        "emphasized_weight": 600
+      },
+      "Footnote": {
+        "font_size": 10,
+        "line_height": 13,
+        "font_weight": 400,
+        "emphasized_weight": 600
+      },
+      "Caption 1": {
+        "font_size": 10,
+        "line_height": 13,
+        "font_weight": 400,
+        "emphasized_weight": 500
+      },
+      "Caption 2": {
+        "font_size": 10,
+        "line_height": 13,
+        "font_weight": 500,
+        "emphasized_weight": 600
+      }
+    }
+  },
+  "geometry": {
+    "provenance": "Project-defined defaults for custom controls; not Apple universal measurements",
+    "units": "Flutter logical pixels",
+    "values": {
+      "page_padding": 24,
+      "narrow_page_padding": 16,
+      "section_gap": 24,
+      "control_gap": 8,
+      "related_field_gap": 12,
+      "label_field_gap": 8,
+      "sidebar_default_width": 224,
+      "sidebar_min_width": 200,
+      "sidebar_max_width": 280,
+      "form_max_width": 640,
+      "dialog_default_width": 480,
+      "dialog_edge_clearance": 24,
+      "custom_button_height": 32,
+      "custom_input_height": 32,
+      "custom_icon_size": 16,
+      "custom_icon_hit_size": 32,
+      "table_header_height": 32,
+      "single_line_row_min_height": 40,
+      "two_line_row_min_height": 56,
+      "column_gap": 24,
+      "control_corner_radius": 8,
+      "content_corner_radius": 12,
+      "separator_width": 1,
+      "custom_focus_outline_width": 2
+    }
+  }
+}

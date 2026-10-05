@@ -63,12 +63,12 @@ class LogViewState {
 /// after close or from a superseded query are discarded.
 class LogViewModel {
   LogViewModel({
-    required ServiceOperations operations,
+    required this._operations,
     required this.projectId,
     required this.serviceId,
     this.limit,
     this.pollInterval = kLogPollInterval,
-  }) : _operations = operations;
+  });
 
   final ServiceOperations _operations;
   final String projectId;

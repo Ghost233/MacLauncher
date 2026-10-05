@@ -65,7 +65,9 @@ SDK 连接成功不等于被接受。启动器只接受**已关联项目**的连
 服务在启动器里只显示状态，不会出现启动/回收按钮。方法常量：
 `kMethodStart`、`kMethodRecycle`、`kMethodStatus`、`kMethodLogs`。
 
-应用级能力通过 `AppCallbacks` 声明（见下文「窗口与入口协作」）。
+应用级能力通过 `AppCallbacks` 声明（见下文「窗口与入口协作」与
+「版本状况查询」），方法常量：`kMethodOpenWindow`、`kMethodSetEntryManaged`、
+`kMethodVersionStatus`。
 
 ## 回调契约
 
@@ -108,6 +110,46 @@ AppCallbacks(
 约定：接管期间你的入口应隐藏；启动器退出时会尽力 `managed: false` 归还，
 **绝不替你回收业务**。详见 [ENTRY_HANDOFF.md](ENTRY_HANDOFF.md)。
 
+## 版本状况查询
+
+启动器可以询问应用的「版本状况」（当前版本、是否有新版本、最新版本号、
+下载地址、查询结果）。注册 `onVersionStatus` 即声明该能力。如何查询
+更新源由你的应用自己决定（SDK 不含下载能力）。
+
+可运行的参照实现见 `example/minimal_app/`（#35）：它按固定假数据应答，
+接入方可直接照抄 `lib/fake_version_status.dart` 的注册方式。联调时用
+`--version-status=success|failure|unsupported` 命令行参数或
+`MACLAUNCHER_VERSION_STATUS` 环境变量（参数优先）切换三态：
+成功（含新版本号、下载地址与 sha256）、失败（附原因）、不支持更新
+（不注册回调，验证 SDK 自动应答）。
+
+```dart
+// 摘自 example/minimal_app/lib/fake_version_status.dart：
+AppCallbacks(
+  onVersionStatus: () async => VersionStatus(
+    state: VersionQueryState.success,
+    currentVersion: '1.0.0',
+    hasUpdate: true,
+    latestVersion: '1.1.0',
+    downloadUrl: 'https://example.invalid/minimal_app/minimal_app-1.1.0.dmg',
+    sha256: kDemoSha256,   // 可选，供后续下载校验
+  ),
+)
+```
+
+约定：
+
+- **如实回报查询结果**：查询失败返回 `state: VersionQueryState.failure`
+  并附 `failureReason`；没有更新渠道返回
+  `state: VersionQueryState.unsupported`（或 `VersionStatus.unsupported()`）
+  ——「不支持更新」是正常应答，不是错误。
+- **未注册回调不是错误**：SDK 会自动应答「不支持更新」。旧版 SDK 没有
+  该能力位，启动器不会向它发送查询。
+- **回调可以抛异常**：SDK 会兜底成 `state: VersionQueryState.failure`
+  （`failureReason` 带异常摘要）的正常应答，不会让启动器把应用内的
+  查询失败误当成超时或断连。
+- 字段按应用回报原样展示，缺失的字段保持缺失，UI 会标注「未提供」。
+
 ## 连接生命周期
 
 - `MacLauncherSdk.connect(...)` 立即返回，内部自动连接与重连
@@ -131,6 +173,6 @@ AppCallbacks(
 ## 测试建议
 
 SDK 客户端由 `packages/launcher_core/test/` 下的真实 socket 往返测试
-覆盖（握手、重连、请求路由、busy/去重规则，共 123 项）。你的应用侧
+覆盖（握手、重连、请求路由、busy/去重规则、版本状况查询，共 138 项）。你的应用侧
 建议：`onStatus` 返回值的快照测试 + 用 minimal_app 模式起一个假业务
 与真实启动器联调。

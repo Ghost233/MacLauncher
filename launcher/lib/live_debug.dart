@@ -12,7 +12,10 @@ import 'package:flutter/widgets.dart';
 void registerLiveDebugExtensions() {
   if (!kDebugMode) return;
 
-  developer.registerExtension('ext.maclauncher.screenshot', (method, params) async {
+  developer.registerExtension('ext.maclauncher.screenshot', (
+    method,
+    params,
+  ) async {
     try {
       final binding = WidgetsBinding.instance;
       final renderView = binding.renderViews.first;
@@ -42,17 +45,19 @@ void registerLiveDebugExtensions() {
     }
   });
 
-  developer.registerExtension('ext.maclauncher.dumpTree', (method, params) async {
+  developer.registerExtension('ext.maclauncher.dumpTree', (
+    method,
+    params,
+  ) async {
     try {
       final binding = WidgetsBinding.instance;
       final widgetsPath = params['widgets'] ?? '/tmp/maclauncher_widgets.txt';
       final renderPath = params['render'] ?? '/tmp/maclauncher_render.txt';
-      await File(widgetsPath).writeAsString(
-        binding.rootElement?.toStringDeep() ?? 'no root element',
-      );
-      await File(renderPath).writeAsString(
-        binding.renderViews.first.toStringDeep(),
-      );
+      await File(
+        widgetsPath,
+      ).writeAsString(binding.rootElement?.toStringDeep() ?? 'no root element');
+      await File(renderPath)
+          .writeAsString(binding.renderViews.first.toStringDeep());
       return developer.ServiceExtensionResponse.result(
         '{"widgets": "$widgetsPath", "render": "$renderPath"}',
       );

@@ -1,0 +1,77 @@
+name: Build macOS DMG (reusable)
+
+# 可复用构建管线：release.yml（v* tag）与 rolling.yml（main）共用。
+# 输入 version 仅用于产物命名与清单（正式发布传 pubspec 版本，滚动构建传 latest）。
+#
+# 第三方 action 引入说明（工程规范 E12）：subosito/flutter-action 解决 CI 中
+# Flutter SDK 精确固定与缓存问题，替代手写下载脚本（可读性与维护性更好）；
+# 版本固定为 3.47.6 stable，与本机 ~/flutter 开发基线一致，macos-15 runner 官方支持。
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "产物命名用版本（正式发布为 pubspec version，滚动构建为 latest）"
+        required: true
+        type: string
+
+jobs:
+  build:
+    # 钉 macos-15：与 Flutter 3.47.6 钉版本同理，避免 *-latest 漂移导致 CI 结果不可复现。
+    runs-on: macos-15
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      APP_NAME: maclauncher
+      FLUTTER_VERSION: "3.47.6"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Resolve workspace dependencies
+        # 根目录是 pub workspace（launcher/ 为成员，resolution: workspace），
+        # 依赖解析必须在仓库根执行。
+        run: flutter pub get --enforce-lockfile
+
+      - name: Build macOS release
+        working-directory: launcher
+        run: flutter build macos --release --no-pub
+
+      - name: Package DMG with hdiutil
+        # 只用系统自带 hdiutil，不引入第三方 DMG 工具。
+        # DMG 未签名（无证书，见 docs/adr/0002-updates-stop-at-the-door.md）。
+        run: |
+          set -euo pipefail
+          app="launcher/build/macos/Build/Products/Release/${APP_NAME}.app"
+          test -d "$app" || { echo "::error::Build product not found: $app"; exit 1; }
+          dmg="MacLauncher-${{ inputs.version }}.dmg"
+          mkdir -p dist staging
+          cp -R "$app" staging/
+          ln -s /Applications staging/Applications
+          hdiutil create \
+            -volname "MacLauncher" \
+            -srcfolder staging \
+            -ov -format UDZO \
+            "dist/${dmg}"
+          rm -rf staging
+
+      - name: Generate SHA256 manifest
+        run: |
+          set -euo pipefail
+          (cd dist && shasum -a 256 *.dmg > SHA256SUMS.txt)
+          cat dist/SHA256SUMS.txt
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: maclauncher-dmg-${{ inputs.version }}
+          path: dist/
+          if-no-files-found: error
