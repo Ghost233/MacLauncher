@@ -75,9 +75,7 @@ class _LogPanelState extends State<LogPanel> {
                   color: AppTheme.textSecondary,
                 ),
                 const SizedBox(width: AppTheme.gapSm),
-                Expanded(
-                  child: Text(widget.title, style: AppTheme.cardTitle),
-                ),
+                Expanded(child: Text(widget.title, style: AppTheme.cardTitle)),
                 if (state.isStale)
                   Tooltip(
                     message: state.reason ?? '读取失败，显示旧内容',
@@ -217,10 +215,7 @@ class _LogList extends StatelessWidget {
                 ),
                 const SizedBox(width: AppTheme.gapSm),
                 Expanded(
-                  child: Text(
-                    notes.join('；'),
-                    style: AppTheme.captionMuted,
-                  ),
+                  child: Text(notes.join('；'), style: AppTheme.captionMuted),
                 ),
               ],
             ),
