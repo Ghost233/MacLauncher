@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:pub_semver/pub_semver.dart';
+
 import 'app_update_service.dart';
 import 'chunked_downloader.dart';
 import 'endpoint.dart';
@@ -115,7 +117,9 @@ class SelfUpdateService {
     if (version == null) {
       return const UpdateCheckFailure('无法确定当前版本（构建通道不可用）。');
     }
-    if (SemVer.tryParse(version) == null) {
+    try {
+      Version.parse(version);
+    } on FormatException {
       return UpdateCheckFailure('当前版本「$version」不是语义化版本，无法比较更新。');
     }
     return _checkerFactory(version).checkForUpdate();
