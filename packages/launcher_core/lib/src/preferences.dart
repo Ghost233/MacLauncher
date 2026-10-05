@@ -8,16 +8,22 @@ import 'dart:io';
 /// them, and disabling a preference never stops a running business: this
 /// store simply has no interaction with business operations.
 class PreferenceStore {
-  PreferenceStore._(this._file, this._prefs, this._updatePrefs);
+  PreferenceStore._(this._file, this._prefs, this._updatePrefs, this._guidance);
 
   /// Reserved top-level key for launcher-wide update preferences. Every
   /// other top-level key is a projectId; the '@' prefix keeps this key
   /// distinct from project-id keys.
   static const _updatesKey = '@updates';
 
+  /// Reserved top-level key for one-shot launcher guidance flags (e.g. the
+  /// invalid-config explainer is shown at most once).
+  static const _guidanceKey = '@guidance';
+
   static const _keyCheckOnLaunch = 'checkOnLaunch';
   static const _keyAutoDownload = 'autoDownload';
   static const _keyAutoInstall = 'autoInstall';
+
+  static const _keyInvalidConfigGuidanceSeen = 'invalidConfigSeen';
 
   final File _file;
 
@@ -28,17 +34,22 @@ class PreferenceStore {
   /// Keys absent from an old preference file fall back to their defaults.
   final Map<String, bool> _updatePrefs;
 
+  /// One-shot guidance flags; absent keys fall back to their defaults.
+  final Map<String, bool> _guidance;
+
   static Future<PreferenceStore> load(String filePath) async {
     final file = File(filePath);
-    if (!file.existsSync()) return PreferenceStore._(file, {}, {});
+    if (!file.existsSync()) return PreferenceStore._(file, {}, {}, {});
     final decoded = jsonDecode(await file.readAsString());
     final prefs = <String, Map<String, bool>>{};
     final updatePrefs = <String, bool>{};
+    final guidance = <String, bool>{};
     for (final entry in (decoded as Map).cast<String, Object?>().entries) {
-      if (entry.key == _updatesKey) {
+      if (entry.key == _updatesKey || entry.key == _guidanceKey) {
+        final target = entry.key == _updatesKey ? updatePrefs : guidance;
         for (final pref
             in (entry.value as Map).cast<String, Object?>().entries) {
-          if (pref.value is bool) updatePrefs[pref.key] = pref.value! as bool;
+          if (pref.value is bool) target[pref.key] = pref.value! as bool;
         }
         continue;
       }
@@ -49,7 +60,7 @@ class PreferenceStore {
       }
       if (services.isNotEmpty) prefs[entry.key] = services;
     }
-    return PreferenceStore._(file, prefs, updatePrefs);
+    return PreferenceStore._(file, prefs, updatePrefs, guidance);
   }
 
   bool isLoginStartEnabled(String projectId, String serviceId) =>
@@ -123,12 +134,41 @@ class PreferenceStore {
     }
   }
 
+  // ---- one-shot guidance flags ----
+
+  /// Whether the invalid-config explainer has already been shown. Default:
+  /// false, including on preference files written before this flag existed.
+  bool get invalidConfigGuidanceSeen =>
+      _guidance[_keyInvalidConfigGuidanceSeen] ?? false;
+
+  /// Records that the invalid-config explainer was shown; it never appears
+  /// again afterwards.
+  Future<void> markInvalidConfigGuidanceSeen() =>
+      _setGuidanceFlag(_keyInvalidConfigGuidanceSeen, true);
+
+  Future<void> _setGuidanceFlag(String key, bool value) async {
+    final previous = _guidance[key];
+    _guidance[key] = value;
+    try {
+      await _save();
+    } catch (_) {
+      // Keep the in-memory state consistent with what is on disk.
+      if (previous == null) {
+        _guidance.remove(key);
+      } else {
+        _guidance[key] = previous;
+      }
+      rethrow;
+    }
+  }
+
   Future<void> _save() async {
     await _file.parent.create(recursive: true);
     final tmp = File('${_file.path}.tmp');
     await tmp.writeAsString(
       const JsonEncoder.withIndent('  ').convert({
         if (_updatePrefs.isNotEmpty) _updatesKey: _updatePrefs,
+        if (_guidance.isNotEmpty) _guidanceKey: _guidance,
         ..._prefs,
       }),
       flush: true,
