@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:launcher_core/launcher_core.dart';
 import 'package:maclauncher_sdk/maclauncher_sdk.dart';
 
+import 'theme.dart';
+
 /// Log panel for one service. Owns a [LogViewModel]: opened while the panel
 /// is visible, closed and disposed with it — closing the panel stops all
 /// further log queries.
@@ -61,23 +63,52 @@ class _LogPanelState extends State<LogPanel> {
       child: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppTheme.gapLg,
+              vertical: AppTheme.gapMd,
+            ),
             child: Row(
               children: [
+                const Icon(
+                  Icons.terminal_rounded,
+                  size: 16,
+                  color: AppTheme.textSecondary,
+                ),
+                const SizedBox(width: AppTheme.gapSm),
                 Expanded(
-                  child: Text(
-                    widget.title,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
+                  child: Text(widget.title, style: AppTheme.cardTitle),
                 ),
                 if (state.isStale)
                   Tooltip(
                     message: state.reason ?? '读取失败，显示旧内容',
-                    child: Chip(
-                      label: const Text('旧内容'),
-                      backgroundColor: Theme.of(context)
-                          .colorScheme
-                          .errorContainer,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.warnSoft,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.history_rounded,
+                            size: 12,
+                            color: AppTheme.warn,
+                          ),
+                          SizedBox(width: 4),
+                          Text(
+                            '旧内容',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w500,
+                              color: AppTheme.warn,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 IconButton(
@@ -90,25 +121,61 @@ class _LogPanelState extends State<LogPanel> {
           const Divider(height: 1),
           Expanded(
             child: switch (state.kind) {
-              LogViewKind.loading => const Center(child: Text('读取中…')),
-              LogViewKind.unsupported => const Center(
-                child: Text('应用未提供日志能力。'),
+              LogViewKind.loading => const _LogStateMessage(
+                icon: Icons.hourglass_top_rounded,
+                message: '读取中…',
               ),
-              LogViewKind.failed => Center(
-                child: Text('日志读取失败：${state.reason}'),
+              LogViewKind.unsupported => const _LogStateMessage(
+                icon: Icons.block_rounded,
+                message: '应用未提供日志能力。',
               ),
-              LogViewKind.unknown => Center(
-                child: Text('日志状态未知：${state.reason ?? ''}'),
+              LogViewKind.failed => _LogStateMessage(
+                icon: Icons.error_outline_rounded,
+                iconColor: AppTheme.danger,
+                message: '日志读取失败：${state.reason}',
+              ),
+              LogViewKind.unknown => _LogStateMessage(
+                icon: Icons.help_outline_rounded,
+                message: '日志状态未知：${state.reason ?? ''}',
               ),
               LogViewKind.batch || LogViewKind.staleBatch =>
                 state.batch!.entries.isEmpty
-                    ? const Center(child: Text('无日志（读取成功但为空）。'))
+                    ? const _LogStateMessage(
+                        icon: Icons.inbox_rounded,
+                        message: '无日志（读取成功但为空）。',
+                      )
                     : _LogList(
                         batch: state.batch!,
                         instanceScopeMissing: state.instanceScopeMissing,
                       ),
             },
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LogStateMessage extends StatelessWidget {
+  const _LogStateMessage({
+    required this.icon,
+    required this.message,
+    this.iconColor = AppTheme.textTertiary,
+  });
+
+  final IconData icon;
+  final String message;
+  final Color iconColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 28, color: iconColor),
+          const SizedBox(height: AppTheme.gapSm),
+          Text(message, style: AppTheme.caption),
         ],
       ),
     );
@@ -128,15 +195,34 @@ class _LogList extends StatelessWidget {
       if (batch.truncated == true) '内容可能已截断（仅此可读范围）',
     ];
     return ListView(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppTheme.gapMd),
       children: [
         if (notes.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              notes.join('；'),
-              style: Theme.of(context).textTheme.bodySmall
-                  ?.copyWith(color: Theme.of(context).colorScheme.secondary),
+          Container(
+            margin: const EdgeInsets.only(bottom: AppTheme.gapMd),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppTheme.gapMd,
+              vertical: AppTheme.gapSm,
+            ),
+            decoration: BoxDecoration(
+              color: AppTheme.neutralSoft,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.info_outline_rounded,
+                  size: 13,
+                  color: AppTheme.textSecondary,
+                ),
+                const SizedBox(width: AppTheme.gapSm),
+                Expanded(
+                  child: Text(
+                    notes.join('；'),
+                    style: AppTheme.captionMuted,
+                  ),
+                ),
+              ],
             ),
           ),
         for (final entry in batch.entries) _LogLine(entry: entry),
@@ -159,22 +245,31 @@ class _LogLine extends StatelessWidget {
         '无原始时间',
       if (entry.stream == LogStream.unknown) '分流未知' else entry.stream.name,
     ];
+    final streamColor = switch (entry.stream) {
+      LogStream.stderr => AppTheme.danger,
+      LogStream.stdout => AppTheme.accent,
+      _ => AppTheme.textTertiary,
+    };
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1),
+      padding: const EdgeInsets.only(bottom: 6),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             '[${annotations.join(' · ')}]',
             style: TextStyle(
-              color: Theme.of(context).colorScheme.outline,
+              color: streamColor.withValues(alpha: 0.8),
               fontFamily: 'monospace',
               fontSize: 11,
             ),
           ),
           Text(
             entry.text,
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 12,
+              color: AppTheme.textPrimary,
+            ),
           ),
         ],
       ),

@@ -5,6 +5,7 @@ import 'package:launcher_core/launcher_core.dart';
 import 'package:maclauncher_sdk/maclauncher_sdk.dart';
 
 import 'log_panel.dart';
+import 'theme.dart';
 
 /// One bound project: connection, handoff state, configuration health and
 /// its declared services.
@@ -39,33 +40,48 @@ class ProjectCard extends StatelessWidget {
     final canOpenWindow = capabilities?.supportsApp(kMethodOpenWindow) ?? false;
     final invalid = refresher.invalidReason(binding.projectId);
     final retained = refresher.retainedServices(binding.projectId);
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+    return Container(
+      decoration: AppTheme.cardDecoration(),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppTheme.gapLg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    binding.name,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
+                  child: Text(binding.name, style: AppTheme.cardTitle),
                 ),
-                Text(connected ? '应用连接：已连接' : '应用连接：未连接'),
-                const SizedBox(width: 12),
-                Text(switch (handoffStatus) {
-                  EntryHandoffStatus.managed => '统一入口：接管完成',
-                  EntryHandoffStatus.unmanaged => '统一入口：未接管',
-                  EntryHandoffStatus.notManageable => '应用保留自身入口',
-                }),
+                StatusPill(
+                  label: connected ? '应用连接：已连接' : '应用连接：未连接',
+                  color: connected ? AppTheme.ok : AppTheme.neutral,
+                  background: connected
+                      ? AppTheme.okSoft
+                      : AppTheme.neutralSoft,
+                ),
+                const SizedBox(width: AppTheme.gapSm),
+                StatusPill(
+                  label: switch (handoffStatus) {
+                    EntryHandoffStatus.managed => '统一入口：接管完成',
+                    EntryHandoffStatus.unmanaged => '统一入口：未接管',
+                    EntryHandoffStatus.notManageable => '应用保留自身入口',
+                  },
+                  color: switch (handoffStatus) {
+                    EntryHandoffStatus.managed => AppTheme.accent,
+                    EntryHandoffStatus.unmanaged => AppTheme.neutral,
+                    EntryHandoffStatus.notManageable => AppTheme.neutral,
+                  },
+                  background: switch (handoffStatus) {
+                    EntryHandoffStatus.managed => AppTheme.accentSoft,
+                    _ => AppTheme.neutralSoft,
+                  },
+                ),
                 if (canOpenWindow) ...[
-                  const SizedBox(width: 8),
-                  TextButton(
+                  const SizedBox(width: AppTheme.gapSm),
+                  TextButton.icon(
                     onPressed: onOpenWindow,
-                    child: const Text('打开窗口'),
+                    icon: const Icon(Icons.open_in_new, size: 14),
+                    label: const Text('打开窗口'),
                   ),
                 ],
                 IconButton(
@@ -75,26 +91,43 @@ class ProjectCard extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 4),
-            Text('项目标识：${binding.projectId}'),
+            const SizedBox(height: AppTheme.gapXs),
+            Text(
+              '项目标识：${binding.projectId}',
+              style: AppTheme.monoMuted,
+            ),
             if (invalid != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.errorContainer,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: Text(
-                      '配置失效：${invalid.reason}（${invalid.detail}）。'
-                      '已保留绑定与运行记录，暂停新启动；修复后点「刷新配置」恢复。',
+              Container(
+                margin: const EdgeInsets.only(top: AppTheme.gapMd),
+                padding: const EdgeInsets.all(AppTheme.gapMd),
+                decoration: BoxDecoration(
+                  color: AppTheme.warnSoft,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.warn.withValues(alpha: 0.35)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      size: 16,
+                      color: AppTheme.warn,
                     ),
-                  ),
+                    const SizedBox(width: AppTheme.gapSm),
+                    Expanded(
+                      child: Text(
+                        '配置失效：${invalid.reason}（${invalid.detail}）。'
+                        '已保留绑定与运行记录，暂停新启动；修复后点「刷新配置」恢复。',
+                        style: AppTheme.caption.copyWith(color: AppTheme.warn),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            const Divider(),
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: AppTheme.gapMd),
+              child: Divider(),
+            ),
             for (final service in binding.services)
               ServiceRow(
                 key: ValueKey('${binding.projectId}/${service.id}'),
@@ -107,12 +140,25 @@ class ProjectCard extends StatelessWidget {
               ),
             for (final service in retained)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Text(
-                  '服务 ${service.name}（${service.id}）：声明已移除，'
-                  '保留只读记录（移除于 ${service.removedAt.toLocal()}）；'
-                  '不代表运行已终止。',
-                  style: Theme.of(context).textTheme.bodySmall,
+                padding: const EdgeInsets.symmetric(vertical: AppTheme.gapXs),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.archive_outlined,
+                      size: 14,
+                      color: AppTheme.textTertiary,
+                    ),
+                    const SizedBox(width: AppTheme.gapSm),
+                    Expanded(
+                      child: Text(
+                        '服务 ${service.name}（${service.id}）：声明已移除，'
+                        '保留只读记录（移除于 ${service.removedAt.toLocal()}）；'
+                        '不代表运行已终止。',
+                        style: AppTheme.captionMuted,
+                      ),
+                    ),
+                  ],
                 ),
               ),
           ],
@@ -259,8 +305,17 @@ class _ServiceRowState extends State<ServiceRow> {
       widget.service.id,
     );
     final view = _view;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppTheme.gapSm),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTheme.gapMd,
+        vertical: AppTheme.gapMd,
+      ),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceSubtle,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.border),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -269,70 +324,127 @@ class _ServiceRowState extends State<ServiceRow> {
               Expanded(
                 child: Text(
                   '服务 ${widget.service.name}（${widget.service.id}）',
-                  style: Theme.of(context).textTheme.bodyLarge,
+                  style: AppTheme.serviceName,
                 ),
               ),
               if (_pending)
                 const Padding(
-                  padding: EdgeInsets.only(right: 8),
+                  padding: EdgeInsets.only(right: AppTheme.gapSm),
                   child: SizedBox(
                     width: 14,
                     height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppTheme.accent,
+                    ),
                   ),
                 ),
-              TextButton(
+              _ActionButton(
+                label: '启动',
+                icon: Icons.play_arrow_rounded,
+                color: AppTheme.ok,
                 onPressed: canStart && !_pending
                     ? () => _change(
                         (ops) => ops.start(widget.projectId, widget.service.id),
                       )
                     : null,
-                child: const Text('启动'),
               ),
-              TextButton(
+              _ActionButton(
+                label: '回收',
+                icon: Icons.stop_rounded,
+                color: AppTheme.danger,
                 onPressed: canRecycle && !_pending
                     ? () => _change(
                         (ops) =>
                             ops.recycle(widget.projectId, widget.service.id),
                       )
                     : null,
-                child: const Text('回收'),
               ),
-              TextButton(
+              _ActionButton(
+                label: '刷新',
+                icon: Icons.refresh_rounded,
+                color: AppTheme.accent,
                 onPressed: canStatus && !_pending ? _requery : null,
-                child: const Text('刷新'),
               ),
-              TextButton(
+              _ActionButton(
+                label: '日志',
+                icon: Icons.article_outlined,
+                color: AppTheme.neutral,
                 onPressed: canLogs ? _openLogs : null,
-                child: const Text('日志'),
               ),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text('登录启动', style: TextStyle(fontSize: 12)),
-                  Switch(
-                    value: loginStart,
-                    onChanged: (value) async {
-                      await widget.preferences.setLoginStartEnabled(
-                        widget.projectId,
-                        widget.service.id,
-                        value,
-                      );
-                      widget.onChanged();
-                    },
-                  ),
-                ],
+              const SizedBox(width: AppTheme.gapSm),
+              const Text('登录启动', style: AppTheme.captionMuted),
+              Transform.scale(
+                scale: 0.75,
+                child: Switch(
+                  value: loginStart,
+                  onChanged: (value) async {
+                    await widget.preferences.setLoginStartEnabled(
+                      widget.projectId,
+                      widget.service.id,
+                      value,
+                    );
+                    widget.onChanged();
+                  },
+                ),
               ),
             ],
           ),
-          if (view != null) _StatusView(view: view, connected: _connected),
+          if (view != null) ...[
+            const SizedBox(height: AppTheme.gapSm),
+            _StatusView(view: view, connected: _connected),
+          ],
           if (_note != null)
-            Text(
-              _note!,
-              style: Theme.of(context).textTheme.bodySmall
-                  ?.copyWith(color: Theme.of(context).colorScheme.secondary),
+            Padding(
+              padding: const EdgeInsets.only(top: AppTheme.gapXs),
+              child: Text(
+                _note!,
+                style: AppTheme.caption.copyWith(
+                  color: AppTheme.accent,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Compact operation button with an icon; disabled state greys out.
+class _ActionButton extends StatelessWidget {
+  const _ActionButton({
+    required this.label,
+    required this.icon,
+    required this.color,
+    this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final Color color;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    final foreground = enabled ? color : AppTheme.textTertiary;
+    return Padding(
+      padding: const EdgeInsets.only(left: AppTheme.gapXs),
+      child: TextButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 15, color: foreground),
+        label: Text(label),
+        style: TextButton.styleFrom(
+          foregroundColor: foreground,
+          textStyle: const TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w500,
+          ),
+          minimumSize: const Size(0, 30),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
       ),
     );
   }
@@ -346,11 +458,6 @@ class _StatusView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = Theme.of(context).textTheme.bodySmall?.copyWith(
-      color: view.isUnknown
-          ? Theme.of(context).colorScheme.outline
-          : Theme.of(context).colorScheme.onSurface,
-    );
     final parts = <String>[];
     final status = view.confirmedStatus;
     if (status != null) {
@@ -375,6 +482,38 @@ class _StatusView extends StatelessWidget {
     if (view.isUnknown) {
       parts.add('当前状态未知${view.reason != null ? '（${view.reason}）' : ''}');
     }
-    return Text(parts.join(' · '), style: style);
+    final stateColor = view.isUnknown
+        ? AppTheme.textTertiary
+        : switch (status?.state) {
+            ServiceState.running => AppTheme.ok,
+            ServiceState.stopped => AppTheme.neutral,
+            null => AppTheme.textTertiary,
+            _ => AppTheme.warn,
+          };
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 5),
+          child: Container(
+            width: 7,
+            height: 7,
+            decoration: BoxDecoration(
+              color: stateColor,
+              shape: BoxShape.circle,
+            ),
+          ),
+        ),
+        const SizedBox(width: AppTheme.gapSm),
+        Expanded(
+          child: Text(
+            parts.join(' · '),
+            style: AppTheme.caption.copyWith(
+              color: view.isUnknown ? AppTheme.textTertiary : AppTheme.textSecondary,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

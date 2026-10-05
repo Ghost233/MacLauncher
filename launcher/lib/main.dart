@@ -5,10 +5,13 @@ import 'package:flutter/services.dart';
 import 'package:launcher_core/launcher_core.dart';
 import 'package:maclauncher_sdk/maclauncher_sdk.dart';
 
+import 'live_debug.dart';
 import 'project_card.dart';
+import 'theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  registerLiveDebugExtensions();
   final layout = EndpointLayout.forUser();
   final bindings = await BindingStore.load('${layout.directory}/bindings.json');
   final prefs = await PreferenceStore.load(
@@ -94,7 +97,8 @@ class MacLauncherApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
     title: 'MacLauncher',
-    theme: ThemeData(colorSchemeSeed: Colors.blueGrey, useMaterial3: true),
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.material(),
     home: ManagementPage(
       server: server,
       serverError: serverError,
@@ -325,50 +329,168 @@ class _ManagementPageState extends State<ManagementPage> {
       appBar: AppBar(
         title: const Text('MacLauncher 管理'),
         actions: [
-          TextButton(onPressed: _toggleLoginItem, child: Text(_loginItemLabel)),
-          TextButton.icon(
-            onPressed: _associate,
-            icon: const Icon(Icons.link),
-            label: const Text('关联项目'),
+          _LoginItemButton(
+            label: _loginItemLabel,
+            status: _loginItemStatus,
+            onPressed: _toggleLoginItem,
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppTheme.gapMd),
+          FilledButton.tonalIcon(
+            onPressed: _associate,
+            icon: const Icon(Icons.link, size: 16),
+            label: const Text('关联项目'),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.accentSoft,
+              foregroundColor: AppTheme.accent,
+              textStyle: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+              minimumSize: const Size(0, 34),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ),
+          const SizedBox(width: AppTheme.gapMd),
         ],
       ),
       body: widget.serverError != null
-          ? Center(child: SelectableText('监听端点启动失败：${widget.serverError}'))
-          : bindings.isEmpty
-          ? const Center(
-              child: Text('尚未关联任何项目。\n点击右上角「关联项目」，选择项目目录中的 maclauncher.json。'),
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(AppTheme.gapXl),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                      Icons.error_outline_rounded,
+                      size: 32,
+                      color: AppTheme.danger,
+                    ),
+                    const SizedBox(height: AppTheme.gapMd),
+                    SelectableText(
+                      '监听端点启动失败：${widget.serverError}',
+                      textAlign: TextAlign.center,
+                      style: AppTheme.caption,
+                    ),
+                  ],
+                ),
+              ),
             )
-          : ListView(
-              children: [
-                for (final binding in bindings)
-                  ProjectCard(
-                    binding: binding,
-                    registry: registry,
-                    operations: widget.operations,
-                    preferences: widget.preferences,
-                    refresher: widget.refresher,
-                    handoffStatus: handoffStatusOf(binding.projectId),
-                    onOpenWindow: () async {
-                      final handoff = widget.handoff;
-                      if (handoff == null) return;
-                      final outcome = await handoff.openWindow(
-                        binding.projectId,
-                      );
-                      if (!context.mounted) return;
-                      _toast(switch (outcome) {
-                        HandoffRequestOutcome.acknowledged => '已请求应用打开原窗口。',
-                        HandoffRequestOutcome.unsupported => '应用未提供打开窗口能力。',
-                        HandoffRequestOutcome.unavailable => '应用未连接。',
-                        HandoffRequestOutcome.unknown => '结果未知：等待超时。',
-                      });
-                    },
-                    onRefreshConfig: () => _refreshConfig(binding.projectId),
-                    onChanged: () => setState(() {}),
+          : bindings.isEmpty
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.link_off_rounded,
+                    size: 32,
+                    color: AppTheme.textTertiary,
                   ),
-              ],
+                  const SizedBox(height: AppTheme.gapMd),
+                  const Text(
+                    '尚未关联任何项目。\n点击右上角「关联项目」，选择项目目录中的 maclauncher.json。',
+                    textAlign: TextAlign.center,
+                    style: AppTheme.caption,
+                  ),
+                ],
+              ),
+            )
+          : Align(
+              alignment: Alignment.topCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 860),
+                child: ListView(
+                  padding: const EdgeInsets.all(AppTheme.gapLg),
+                  children: [
+                    for (final binding in bindings)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          bottom: AppTheme.gapLg,
+                        ),
+                        child: ProjectCard(
+                          binding: binding,
+                          registry: registry,
+                          operations: widget.operations,
+                          preferences: widget.preferences,
+                          refresher: widget.refresher,
+                          handoffStatus: handoffStatusOf(binding.projectId),
+                          onOpenWindow: () async {
+                            final handoff = widget.handoff;
+                            if (handoff == null) return;
+                            final outcome = await handoff.openWindow(
+                              binding.projectId,
+                            );
+                            if (!context.mounted) return;
+                            _toast(switch (outcome) {
+                              HandoffRequestOutcome.acknowledged =>
+                                '已请求应用打开原窗口。',
+                              HandoffRequestOutcome.unsupported =>
+                                '应用未提供打开窗口能力。',
+                              HandoffRequestOutcome.unavailable => '应用未连接。',
+                              HandoffRequestOutcome.unknown => '结果未知：等待超时。',
+                            });
+                          },
+                          onRefreshConfig: () =>
+                              _refreshConfig(binding.projectId),
+                          onChanged: () => setState(() {}),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
+    );
+  }
+}
+
+/// App-bar login-item control: a colored status pill that toggles the login
+/// item on tap. The label text comes verbatim from the page.
+class _LoginItemButton extends StatelessWidget {
+  const _LoginItemButton({
+    required this.label,
+    required this.status,
+    required this.onPressed,
+  });
+
+  final String label;
+  final String status;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final (color, background) = switch (status) {
+      'enabled' => (AppTheme.ok, AppTheme.okSoft),
+      'requiresApproval' => (AppTheme.warn, AppTheme.warnSoft),
+      _ => (AppTheme.neutral, AppTheme.neutralSoft),
+    };
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(999),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: background,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.login_rounded, size: 13, color: color),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: color,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
