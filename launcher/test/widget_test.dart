@@ -99,6 +99,84 @@ Future<void> settle(
 }
 
 void main() {
+  testWidgets('corrupted storage files surface one startup notice, once', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      final directory = Directory.systemTemp.createTempSync(
+        'launcher-corrupt-ui-test-',
+      );
+      try {
+        // Damage two of the three local stores before the app loads them.
+        File(
+          '${directory.path}/bindings.json',
+        ).writeAsStringSync('{oops not json');
+        File('${directory.path}/preferences.json').writeAsStringSync(
+          '{"proj-a": {"svc": true}, "proj-bad": 42}',
+        );
+        final bindings = await BindingStore.load(
+          '${directory.path}/bindings.json',
+        );
+        final preferences = await PreferenceStore.load(
+          '${directory.path}/preferences.json',
+        );
+        final refresher = await ConfigRefresher.load(
+          bindings,
+          '${directory.path}/config_state.json',
+        );
+        final reports = [
+          bindings.corruptionReport,
+          preferences.corruptionReport,
+          refresher.corruptionReport,
+        ].whereType<StorageCorruptionReport>().toList();
+        expect(reports, hasLength(2));
+
+        await tester.pumpWidget(
+          MacLauncherApp(
+            bindings: bindings,
+            preferences: preferences,
+            refresher: refresher,
+            corruptionReports: reports,
+          ),
+        );
+        // Post-frame callback delivers the notice.
+        await tester.pump();
+
+        // Content: which file was damaged and where it was backed up.
+        expect(find.textContaining('检测到本机存储文件损坏'), findsOneWidget);
+        expect(find.textContaining('bindings.json'), findsOneWidget);
+        expect(find.textContaining('.corrupt-'), findsOneWidget);
+        // Record-level damage is reported too.
+        expect(find.textContaining('preferences.json'), findsOneWidget);
+        expect(find.textContaining('1 条无效记录'), findsOneWidget);
+
+        // One-time: once dismissed (the snackbar's 5s duration is
+        // framework behaviour; hide it explicitly to keep the test
+        // deterministic under runAsync), it never comes back — not after
+        // further frames, and not across a full widget rebuild.
+        tester
+            .state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger))
+            .hideCurrentSnackBar();
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump();
+        expect(find.textContaining('检测到本机存储文件损坏'), findsNothing);
+        await tester.pumpWidget(
+          MacLauncherApp(
+            bindings: bindings,
+            preferences: preferences,
+            refresher: refresher,
+            corruptionReports: reports,
+          ),
+        );
+        await tester.pump(const Duration(seconds: 1));
+        expect(find.textContaining('检测到本机存储文件损坏'), findsNothing);
+      } finally {
+        directory.deleteSync(recursive: true);
+      }
+    });
+  });
+
   testWidgets('a bound project appears and shows observer-driven status', (
     tester,
   ) async {

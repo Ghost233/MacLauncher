@@ -103,6 +103,14 @@ Future<void> main() async {
     relauncher: _relaunchViaNativeChannel,
   );
 
+  // Damage found while loading the three local stores, aggregated so the
+  // page can surface one startup notice (#42).
+  final corruptionReports = [
+    bindings.corruptionReport,
+    prefs.corruptionReport,
+    refresher.corruptionReport,
+  ].whereType<StorageCorruptionReport>().toList();
+
   runApp(
     MacLauncherApp(
       server: server,
@@ -114,6 +122,7 @@ Future<void> main() async {
       handoff: handoff,
       updateService: AppUpdateService(layout: layout),
       selfUpdateFlow: selfUpdateFlow,
+      corruptionReports: corruptionReports,
     ),
   );
 }
@@ -130,6 +139,7 @@ class MacLauncherApp extends StatelessWidget {
     this.handoff,
     this.updateService,
     this.selfUpdateFlow,
+    this.corruptionReports = const [],
   });
 
   final LauncherServer? server;
@@ -141,6 +151,9 @@ class MacLauncherApp extends StatelessWidget {
   final EntryHandoffCoordinator? handoff;
   final AppUpdateService? updateService;
   final SelfUpdateFlow? selfUpdateFlow;
+
+  /// Damage found while loading the local stores; surfaced once at startup.
+  final List<StorageCorruptionReport> corruptionReports;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -157,6 +170,7 @@ class MacLauncherApp extends StatelessWidget {
       handoff: handoff,
       updateService: updateService,
       selfUpdateFlow: selfUpdateFlow,
+      corruptionReports: corruptionReports,
     ),
   );
 }
@@ -175,6 +189,7 @@ class ManagementPage extends StatefulWidget {
     this.handoff,
     this.updateService,
     this.selfUpdateFlow,
+    this.corruptionReports = const [],
   });
 
   final LauncherServer? server;
@@ -186,6 +201,7 @@ class ManagementPage extends StatefulWidget {
   final EntryHandoffCoordinator? handoff;
   final AppUpdateService? updateService;
   final SelfUpdateFlow? selfUpdateFlow;
+  final List<StorageCorruptionReport> corruptionReports;
 
   @override
   State<ManagementPage> createState() => _ManagementPageState();
@@ -198,10 +214,20 @@ class _ManagementPageState extends State<ManagementPage> {
   StreamSubscription<HandoffState>? _handoffSub;
   final Map<String, EntryHandoffStatus> _handoffStatus = {};
   String _loginItemStatus = 'unknown';
+  bool _corruptionNoticeShown = false;
 
   @override
   void initState() {
     super.initState();
+    // One aggregated notice per launch for damaged local storage (#42).
+    if (widget.corruptionReports.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_corruptionNoticeShown) {
+          _corruptionNoticeShown = true;
+          _showCorruptionNotice();
+        }
+      });
+    }
     _registrySub = widget.server?.registry.changes.listen((_) {
       if (mounted) setState(() {});
     });
@@ -254,8 +280,27 @@ class _ManagementPageState extends State<ManagementPage> {
       widget.handoff?.statusOf(projectId) ??
       EntryHandoffStatus.unmanaged;
 
-  Future<void> _loadLoginItemStatus() async {
-    try {
+  void _showCorruptionNotice() {
+    final lines = [
+      '检测到本机存储文件损坏，已按以下方式恢复：',
+      for (final report in widget.corruptionReports) ...[
+        if (report.backupPath != null)
+          '· 「${_basename(report.filePath)}」已损坏，原文件已备份为'
+              '「${_basename(report.backupPath!)}」，按空集合启动。',
+        if (report.skippedRecords > 0)
+          '· 「${_basename(report.filePath)}」有 ${report.skippedRecords} '
+              '条无效记录，已跳过并保留其余记录。',
+      ],
+    ].join('\n');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(lines), duration: const Duration(seconds: 5)),
+    );
+  }
+
+  static String _basename(String path) =>
+      path.replaceAll('\\', '/').split('/').last;
+
+  Future<void> _loadLoginItemStatus() async {    try {
       final status = await _native.invokeMethod<String>('loginItemStatus');
       if (mounted && status != null) {
         setState(() => _loginItemStatus = status);
