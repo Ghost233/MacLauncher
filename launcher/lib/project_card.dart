@@ -49,9 +49,7 @@ class ProjectCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                Expanded(
-                  child: Text(binding.name, style: AppTheme.cardTitle),
-                ),
+                Expanded(child: Text(binding.name, style: AppTheme.cardTitle)),
                 StatusPill(
                   label: connected ? '应用连接：已连接' : '应用连接：未连接',
                   color: connected ? AppTheme.ok : AppTheme.neutral,
@@ -92,10 +90,7 @@ class ProjectCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppTheme.gapXs),
-            Text(
-              '项目标识：${binding.projectId}',
-              style: AppTheme.monoMuted,
-            ),
+            Text('项目标识：${binding.projectId}', style: AppTheme.monoMuted),
             if (invalid != null)
               Container(
                 margin: const EdgeInsets.only(top: AppTheme.gapMd),
@@ -103,7 +98,9 @@ class ProjectCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: AppTheme.warnSoft,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.warn.withValues(alpha: 0.35)),
+                  border: Border.all(
+                    color: AppTheme.warn.withValues(alpha: 0.35),
+                  ),
                 ),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -509,7 +506,9 @@ class _StatusView extends StatelessWidget {
           child: Text(
             parts.join(' · '),
             style: AppTheme.caption.copyWith(
-              color: view.isUnknown ? AppTheme.textTertiary : AppTheme.textSecondary,
+              color: view.isUnknown
+                  ? AppTheme.textTertiary
+                  : AppTheme.textSecondary,
             ),
           ),
         ),
