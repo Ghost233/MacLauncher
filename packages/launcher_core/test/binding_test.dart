@@ -134,6 +134,17 @@ void main() {
       );
     });
 
+    test("project id starting with '@' is reserved", () async {
+      expect(
+        await rejectionOf({
+          'schemaVersion': 1,
+          'project': {'id': '@updates', 'name': 'x'},
+          'services': const [],
+        }),
+        ManifestRejection.reservedProjectId,
+      );
+    });
+
     test('empty service id', () async {
       expect(
         await rejectionOf({
