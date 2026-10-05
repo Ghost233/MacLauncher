@@ -17,4 +17,8 @@ dependencies:
   maclauncher_sdk: ^0.1.0
 
 dev_dependencies:
+  # E12: dev-only; the controlled example peer is imported by real-socket
+  # tests (fake business + shared version-status demo constants). Workspace
+  # member, already pinned in the lockfile.
+  minimal_app: ^0.1.0
   test: ^1.25.0
