@@ -89,7 +89,12 @@ class _AppUpdateSectionState extends State<AppUpdateSection> {
   /// this background run needs no additional error handling (E03).
   Future<void> _runQuery() async {
     final operations = widget.operations;
-    if (operations == null) return;
+    if (operations == null) {
+      // initState may have marked a query in flight before knowing the
+      // operations seam is absent; never leave the spinner stuck.
+      if (mounted && _querying) setState(() => _querying = false);
+      return;
+    }
     final result = await operations.versionStatus(widget.projectId);
     if (!mounted) return;
     setState(() {
@@ -372,7 +377,10 @@ class _AppUpdateSectionState extends State<AppUpdateSection> {
         ),
         if (failed && result is VersionStatusSnapshot)
           TextButton(
-            onPressed: () => _runDownload(result.status),
+            // Retry goes through the same consent path as the first click:
+            // a missing sha256 must be confirmed again, not silently
+            // skipped after the initial consent (P2 review fix).
+            onPressed: () => _onDownloadPressed(result.status),
             child: const Text('重试下载'),
           ),
       ],
