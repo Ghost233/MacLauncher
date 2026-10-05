@@ -2,115 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-/// A semantic version (SemVer 2.0.0) with precedence comparison.
-///
-/// Parsing is lenient about one leading `v` (`v1.2.3` == `1.2.3`, the common
-/// git tag convention) and requires exactly `major.minor.patch`. Build
-/// metadata (`+build`) is retained for display but ignored in precedence, as
-/// SemVer §10 mandates: `1.2.0+4` and `1.2.0+5` compare equal, so a rebuilt
-/// package of the same release is never reported as an update.
-class SemVer implements Comparable<SemVer> {
-  const SemVer._(
-    this.major,
-    this.minor,
-    this.patch,
-    this.prerelease,
-    this.build,
-  );
+import 'package:pub_semver/pub_semver.dart';
 
-  final int major;
-  final int minor;
-  final int patch;
-
-  /// Dot-separated prerelease identifiers; null for a normal release. A
-  /// release sorts after every one of its prereleases (`1.3.0-rc.1 < 1.3.0`).
-  final List<String>? prerelease;
-
-  /// Build metadata without the `+`; never participates in comparison.
-  final String? build;
-
-  static final RegExp _numericIdentifier = RegExp(r'^\d+$');
-  static final RegExp _identifier = RegExp(r'^[0-9A-Za-z-]+$');
-
-  /// Parses [raw] (optionally `v`-prefixed); returns null when [raw] is not a
-  /// semantic version.
-  static SemVer? tryParse(String raw) {
-    var text = raw.trim();
-    if (text.startsWith('v') || text.startsWith('V')) {
-      text = text.substring(1);
-    }
-    String? build;
-    final plus = text.indexOf('+');
-    if (plus >= 0) {
-      build = text.substring(plus + 1);
-      text = text.substring(0, plus);
-      if (build.isEmpty || !_identifier.hasMatch(build)) return null;
-    }
-    List<String>? prerelease;
-    final dash = text.indexOf('-');
-    if (dash >= 0) {
-      final pre = text.substring(dash + 1);
-      text = text.substring(0, dash);
-      prerelease = pre.split('.');
-      if (prerelease.any((id) => id.isEmpty || !_identifier.hasMatch(id))) {
-        return null;
-      }
-    }
-    final core = text.split('.');
-    if (core.length != 3) return null;
-    final numbers = <int>[];
-    for (final part in core) {
-      if (!_numericIdentifier.hasMatch(part)) return null;
-      final value = int.tryParse(part);
-      if (value == null) return null;
-      numbers.add(value);
-    }
-    return SemVer._(numbers[0], numbers[1], numbers[2], prerelease, build);
-  }
-
-  /// Precedence per SemVer §11; [build] metadata is ignored.
-  @override
-  int compareTo(SemVer other) {
-    if (major != other.major) return major.compareTo(other.major);
-    if (minor != other.minor) return minor.compareTo(other.minor);
-    if (patch != other.patch) return patch.compareTo(other.patch);
-    final mine = prerelease;
-    final theirs = other.prerelease;
-    if (mine == null && theirs == null) return 0;
-    if (mine == null) return 1; // a release outranks its prereleases
-    if (theirs == null) return -1;
-    for (var i = 0; i < mine.length && i < theirs.length; i++) {
-      final a = mine[i];
-      final b = theirs[i];
-      if (a == b) continue;
-      final aNumeric = _numericIdentifier.hasMatch(a);
-      final bNumeric = _numericIdentifier.hasMatch(b);
-      if (aNumeric && bNumeric) {
-        final result = int.parse(a).compareTo(int.parse(b));
-        if (result != 0) return result;
-      } else if (aNumeric) {
-        return -1; // numeric identifiers sort below alphanumeric ones
-      } else if (bNumeric) {
-        return 1;
-      } else {
-        final result = a.compareTo(b);
-        if (result != 0) return result;
-      }
-    }
-    // A larger set of prerelease identifiers outranks a smaller prefix.
-    return mine.length.compareTo(theirs.length);
-  }
-
-  /// `major.minor.patch[-prerelease][+build]`, without any `v` prefix.
-  @override
-  String toString() {
-    final buffer = StringBuffer('$major.$minor.$patch');
-    final pre = prerelease;
-    if (pre != null) buffer.write('-${pre.join('.')}');
-    final b = build;
-    if (b != null) buffer.write('+$b');
-    return buffer.toString();
-  }
+/// Thrown when the latest-release endpoint answers 404: the repository has
+/// no published full release yet. That is a normal state (a project that
+/// never shipped), not data corruption, so it gets its own failure reason
+/// instead of going through the malformed-payload path.
+class _NoPublishedReleaseException implements Exception {
+  const _NoPublishedReleaseException();
 }
 
 /// Outcome of one [UpdateChecker.checkForUpdate] call.
@@ -185,9 +84,16 @@ class _AssetInfo {
 /// (see 滚动构建 in CONTEXT.md) never matches this endpoint — that is exactly
 /// the "latest full release" semantics issue #29 asks for. When the
 /// repository has no full release yet the endpoint answers 404, reported as
-/// an [UpdateCheckFailure] with an explicit reason. A defensive guard still
-/// rejects a payload marked draft or prerelease, in case the endpoint
+/// an [UpdateCheckFailure] whose reason explicitly says "no published full
+/// release yet", distinct from malformed-payload failures. A defensive guard
+/// still rejects a payload marked draft or prerelease, in case the endpoint
 /// behavior ever changes.
+///
+/// Versions are parsed and compared with package:pub_semver. Tags may carry
+/// one leading `v`. Build metadata (`+build`) is kept for display but
+/// ignored in precedence per SemVer §10 (see [_withoutBuild] — pub_semver's
+/// compareTo would otherwise treat a rebuild like `1.2.0+4` → `1.2.0+9` as
+/// an update).
 ///
 /// The current version is build-time injected (pubspec version); this module
 /// never reads package info itself. [owner]/[repo] default to the launcher
@@ -222,7 +128,11 @@ class UpdateChecker {
   /// Bound on the whole check; expiry is reported as an [UpdateCheckFailure].
   final Duration timeout;
 
-  static final RegExp _sha256Hex = RegExp(r'^[0-9a-fA-F]{64}$');
+  /// 64 hex digits, anchored for digest validation and unanchored for
+  /// scanning a checksum file's body; one shared source for the pattern.
+  static const String _sha256HexPattern = '[0-9a-fA-F]{64}';
+  static final RegExp _sha256Hex = RegExp('^$_sha256HexPattern\$');
+  static final RegExp _sha256HexSearch = RegExp(_sha256HexPattern);
 
   Uri get _latestReleaseUri => _baseUri.replace(
     path: '${_baseUri.path}/repos/$owner/$repo/releases/latest',
@@ -234,7 +144,7 @@ class UpdateChecker {
   /// status codes, malformed JSON and timeouts all become
   /// [UpdateCheckFailure] — the caller decides whether to surface anything.
   Future<UpdateCheckResult> checkForUpdate() async {
-    final current = SemVer.tryParse(currentVersion);
+    final current = _parseVersion(currentVersion);
     if (current == null) {
       return UpdateCheckFailure(
         'current version "$currentVersion" is not a semantic version',
@@ -243,6 +153,10 @@ class UpdateChecker {
     final client = _clientFactory();
     try {
       return await _check(client, current).timeout(timeout);
+    } on _NoPublishedReleaseException {
+      return const UpdateCheckFailure(
+        'no published full release yet (GitHub answered 404)',
+      );
     } on TimeoutException {
       return UpdateCheckFailure('request timed out after $timeout');
     } catch (error) {
@@ -252,6 +166,38 @@ class UpdateChecker {
     }
   }
 
+  /// Parses a version string, tolerating surrounding whitespace and one
+  /// leading `v` (the common git tag convention, which [Version.parse]
+  /// rejects); returns null for anything that is not a semantic version.
+  static Version? _parseVersion(String raw) {
+    var text = raw.trim();
+    if (text.startsWith('v') || text.startsWith('V')) {
+      text = text.substring(1);
+    }
+    try {
+      return Version.parse(text);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  /// [v] without its build metadata.
+  ///
+  /// pub_semver's [Version.compareTo] compares build metadata as a
+  /// tiebreaker, but SemVer §10 mandates that build metadata is ignored in
+  /// precedence: `1.2.0+4` and `1.2.0+5` are the same release rebuilt, never
+  /// an update. Stripping the build before comparing restores §10 semantics.
+  static Version _withoutBuild(Version v) {
+    if (v.build.isEmpty) return v;
+    final pre = v.preRelease;
+    return Version(
+      v.major,
+      v.minor,
+      v.patch,
+      pre: pre.isEmpty ? null : pre.map((id) => '$id').join('.'),
+    );
+  }
+
   static String _describe(Object error) {
     if (error is SocketException) return 'network error: ${error.message}';
     if (error is HttpException) return 'HTTP error: ${error.message}';
@@ -259,7 +205,7 @@ class UpdateChecker {
     return 'unexpected error: $error';
   }
 
-  Future<UpdateCheckResult> _check(HttpClient client, SemVer current) async {
+  Future<UpdateCheckResult> _check(HttpClient client, Version current) async {
     final release = await _getJson(client, _latestReleaseUri);
 
     final tagName = release['tag_name'];
@@ -273,7 +219,7 @@ class UpdateChecker {
         'treating it as "no published full release"',
       );
     }
-    final latest = SemVer.tryParse(tagName);
+    final latest = _parseVersion(tagName);
     if (latest == null) {
       throw FormatException('unparseable release tag "$tagName"');
     }
@@ -296,7 +242,7 @@ class UpdateChecker {
     }
 
     return UpdateCheckSuccess(
-      hasUpdate: latest.compareTo(current) > 0,
+      hasUpdate: _withoutBuild(latest).compareTo(_withoutBuild(current)) > 0,
       latestVersion: latest.toString(),
       dmgDownloadUrl: dmg?.downloadUrl,
       sha256: sha256,
@@ -350,7 +296,7 @@ class UpdateChecker {
       if (asset.name != expected) continue;
       try {
         final body = await _getText(client, asset.downloadUrl);
-        final match = RegExp(r'[0-9a-fA-F]{64}').firstMatch(body);
+        final match = _sha256HexSearch.firstMatch(body);
         return match?.group(0)?.toLowerCase();
       } catch (_) {
         return null;
@@ -381,9 +327,7 @@ class UpdateChecker {
     final response = await request.close();
     final body = await utf8.decoder.bind(response).join();
     if (response.statusCode == HttpStatus.notFound) {
-      throw const FormatException(
-        'repository has no published full release yet (HTTP 404)',
-      );
+      throw const _NoPublishedReleaseException();
     }
     if (response.statusCode != HttpStatus.ok) {
       throw HttpException('unexpected HTTP ${response.statusCode}', uri: uri);
