@@ -442,6 +442,68 @@ void main() {
     });
   });
 
+  testWidgets('未提供校验值：首次确认后下载失败，重试仍需再次确认', (tester) async {
+    await tester.runAsync(() async {
+      final harness = await _Harness.create();
+      harness.downloader.error = DownloadHttpException(
+        Uri.parse('https://example.com/app-1.3.0.dmg'),
+        500,
+      );
+      MacLauncherSdk? sdk;
+      try {
+        await tester.pumpWidget(harness.app());
+        sdk = await harness.connectSdk(
+          onVersionStatus: () async => VersionStatus(
+            state: VersionQueryState.success,
+            currentVersion: '1.2.0',
+            hasUpdate: true,
+            latestVersion: '1.3.0',
+            downloadUrl: 'https://example.com/app-1.3.0.dmg',
+            // No sha256: consent is required on every download attempt.
+          ),
+        );
+        await settle(tester);
+
+        // First attempt: consent dialog, then the download fails.
+        await tester.tap(find.text('下载更新'));
+        await settle(tester);
+        expect(find.text('未提供校验值'), findsOneWidget);
+        await tester.tap(find.text('继续下载'));
+        await settle(tester);
+        expect(harness.downloader.calls, 1);
+        expect(find.textContaining('下载失败：'), findsOneWidget);
+        expect(find.text('重试下载'), findsOneWidget);
+
+        // Retry must re-ask for consent, not download silently.
+        await tester.tap(find.text('重试下载'));
+        await settle(tester);
+        expect(find.text('未提供校验值'), findsOneWidget);
+        expect(harness.downloader.calls, 1);
+
+        // Declining the retry consent downloads nothing.
+        await tester.tap(find.text('取消'));
+        await settle(tester);
+        expect(harness.downloader.calls, 1);
+
+        // Confirming the retry runs the download again.
+        harness.downloader.error = null;
+        await tester.tap(find.text('重试下载'));
+        await settle(tester);
+        await tester.tap(find.text('继续下载'));
+        await settle(tester);
+        expect(harness.downloader.calls, 2);
+        expect(harness.downloader.expectedSha256, isNull);
+        expect(find.text('已下载并打开更新包'), findsOneWidget);
+
+        await tester.tap(find.text('知道了'));
+        await settle(tester);
+      } finally {
+        await sdk?.dispose();
+        await harness.dispose();
+      }
+    });
+  });
+
   testWidgets('下载中可取消，呈现取消路径与断点续传提示', (tester) async {
     await tester.runAsync(() async {
       final harness = await _Harness.create();
