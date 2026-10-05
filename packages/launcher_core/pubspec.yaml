@@ -9,6 +9,7 @@ environment:
 resolution: workspace
 
 dependencies:
+  crypto: ^3.0.7
   maclauncher_sdk: ^0.1.0
 
 dev_dependencies:
