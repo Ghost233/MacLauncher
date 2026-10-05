@@ -256,6 +256,7 @@ class ServerSession {
     if (!validMethods(capabilities['app'], {
       kMethodOpenWindow,
       kMethodSetEntryManaged,
+      kMethodVersionStatus,
     })) {
       return false;
     }

@@ -35,9 +35,14 @@ class ServiceCallbacks {
   ];
 }
 
-/// Optional app-level callbacks for entry/window cooperation.
+/// Optional app-level callbacks for entry/window cooperation and version
+/// status queries.
 class AppCallbacks {
-  AppCallbacks({this.onOpenWindow, this.onSetEntryManaged});
+  AppCallbacks({
+    this.onOpenWindow,
+    this.onSetEntryManaged,
+    this.onVersionStatus,
+  });
 
   final Future<void> Function()? onOpenWindow;
 
@@ -45,9 +50,15 @@ class AppCallbacks {
   /// (managed=false) its own menu-bar entry. Returns true on confirmation.
   final Future<bool> Function(bool managed)? onSetEntryManaged;
 
+  /// The launcher asks for the app's version status (版本状况). The app
+  /// decides how it queries its own update source and reports the real
+  /// outcome, including failure and 「不支持更新」.
+  final Future<VersionStatus> Function()? onVersionStatus;
+
   List<String> get methods => [
     if (onOpenWindow != null) kMethodOpenWindow,
     if (onSetEntryManaged != null) kMethodSetEntryManaged,
+    if (onVersionStatus != null) kMethodVersionStatus,
   ];
 }
 
@@ -387,7 +398,9 @@ class MacLauncherSdk {
     String? serviceId,
     Map<String, Object?>? params,
   ) async {
-    if (method == kMethodOpenWindow || method == kMethodSetEntryManaged) {
+    if (method == kMethodOpenWindow ||
+        method == kMethodSetEntryManaged ||
+        method == kMethodVersionStatus) {
       return _dispatchApp(method, params);
     }
     if (serviceId == null) {
@@ -484,6 +497,22 @@ class MacLauncherSdk {
             ));
         final managed = params?['managed'] == true;
         return {'confirmed': await cb(managed)};
+      case kMethodVersionStatus:
+        final cb = app?.onVersionStatus;
+        // No callback is not an error: answer 「不支持更新」 so the launcher
+        // can show that instead of a failure.
+        if (cb == null) return VersionStatus.unsupported().toJson();
+        // A throwing callback is not a protocol error either: report the
+        // failed query as a normal answer so the launcher can distinguish it
+        // from a timeout or disconnect.
+        try {
+          return (await cb()).toJson();
+        } catch (error) {
+          return VersionStatus(
+            state: VersionQueryState.failure,
+            failureReason: 'onVersionStatus threw: $error',
+          ).toJson();
+        }
       default:
         throw ProtocolError(
           ProtocolError.unsupported,

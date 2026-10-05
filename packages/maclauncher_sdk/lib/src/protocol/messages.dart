@@ -15,6 +15,7 @@ const String kMethodLogs = 'logs';
 /// App-level methods.
 const String kMethodOpenWindow = 'openWindow';
 const String kMethodSetEntryManaged = 'setEntryManaged';
+const String kMethodVersionStatus = 'versionStatus';
 
 /// Business state reported by the application. Reading errors and SDK
 /// disconnects must never be mapped to [ServiceState.failed] or
@@ -223,7 +224,8 @@ class CapabilitySet {
 
   final List<ServiceDeclaration> services;
 
-  /// Subset of openWindow/setEntryManaged the application supports.
+  /// Subset of openWindow/setEntryManaged/versionStatus the application
+  /// supports.
   final List<String> app;
 
   bool supportsApp(String method) => app.contains(method);
@@ -247,6 +249,111 @@ class CapabilitySet {
     ],
     app: [for (final m in (json['app'] as List? ?? const [])) m as String],
   );
+}
+
+/// How the application's own update query concluded. The application alone
+/// decides how it queries its update source; the launcher never guesses.
+enum VersionQueryState {
+  /// The query ran; [VersionStatus] fields describe what was found.
+  success,
+
+  /// The query failed; [VersionStatus.failureReason] carries the cause.
+  failure,
+
+  /// The application has no update channel to query.
+  unsupported;
+
+  static VersionQueryState fromJson(String value) =>
+      // An unrecognized state is read as failure: it must never be
+      // presented as a successful query.
+      VersionQueryState.values.asNameMap()[value] ?? VersionQueryState.failure;
+
+  String toJson() => name;
+}
+
+/// The application's answer to a version status query (版本状况).
+///
+/// All fields except [state] are optional: an unsupported answer may carry
+/// nothing but the state, and a failed answer carries [failureReason].
+/// Values pass through verbatim — the launcher displays them as reported
+/// and never fabricates missing pieces.
+class VersionStatus {
+  VersionStatus({
+    required this.state,
+    this.currentVersion,
+    this.hasUpdate,
+    this.latestVersion,
+    this.downloadUrl,
+    this.failureReason,
+    this.sha256,
+  });
+
+  /// The 「不支持更新」answer: the application has no update channel. The SDK
+  /// sends this automatically when no version-status callback is registered.
+  VersionStatus.unsupported() : this(state: VersionQueryState.unsupported);
+
+  /// How the update query concluded.
+  final VersionQueryState state;
+
+  /// The version the application is currently running. Expected on success;
+  /// null when the answering party cannot know (e.g. the SDK's automatic
+  /// unsupported answer).
+  final String? currentVersion;
+
+  /// Whether a newer version exists. Null means not provided / unknown;
+  /// only meaningful on success.
+  final bool? hasUpdate;
+
+  /// The newest known version. Null when unknown or not applicable.
+  final String? latestVersion;
+
+  /// Where the update package can be downloaded. Null when not applicable.
+  final String? downloadUrl;
+
+  /// Why the query failed; only meaningful on [VersionQueryState.failure].
+  final String? failureReason;
+
+  /// Optional integrity digest of the update package, for a later download
+  /// step to verify. Passed through untouched.
+  final String? sha256;
+
+  Map<String, Object?> toJson() => {
+    'state': state.toJson(),
+    'currentVersion': currentVersion,
+    'hasUpdate': hasUpdate,
+    'latestVersion': latestVersion,
+    'downloadUrl': downloadUrl,
+    'failureReason': failureReason,
+    'sha256': sha256,
+  };
+
+  static VersionStatus fromJson(Map<String, Object?> json) {
+    String? stringOrNull(Object? value) => value is String ? value : null;
+    final rawState = json['state'];
+    final state = rawState is String
+        ? VersionQueryState.fromJson(rawState)
+        : VersionQueryState.failure;
+    final failureReason = stringOrNull(json['failureReason']);
+    return VersionStatus(
+      state: state,
+      currentVersion: stringOrNull(json['currentVersion']),
+      hasUpdate: switch (json['hasUpdate']) {
+        final bool b => b,
+        _ => null,
+      },
+      latestVersion: stringOrNull(json['latestVersion']),
+      downloadUrl: stringOrNull(json['downloadUrl']),
+      // A missing/invalid state is surfaced as a failure with an explicit
+      // reason instead of being silently dropped.
+      failureReason:
+          failureReason ??
+          (rawState is String &&
+                  VersionQueryState.values.asNameMap().containsKey(rawState)
+              ? null
+              : 'missing or invalid query state: $rawState'),
+      sha256: stringOrNull(json['sha256']),
+    );
+  }
 }
 
 /// Error codes for response messages.
