@@ -6,6 +6,7 @@ export 'src/association.dart';
 export 'src/autostart.dart';
 export 'src/binding_lookup.dart';
 export 'src/binding_store.dart';
+export 'src/chunked_downloader.dart';
 export 'src/config_refresh.dart';
 export 'src/endpoint.dart';
 export 'src/endpoint_lock.dart';
