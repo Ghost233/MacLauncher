@@ -114,6 +114,10 @@ Future<void> main() async {
       handoff: handoff,
       updateService: AppUpdateService(layout: layout),
       selfUpdateFlow: selfUpdateFlow,
+      // Unbind entry for the invalid-config guidance (issue #43): wired to
+      // UnbindFlow.unbind once issue #41 lands on the integration branch;
+      // until then the card shows the entry disabled with a reason.
+      onUnbindProject: null,
     ),
   );
 }
@@ -130,6 +134,7 @@ class MacLauncherApp extends StatelessWidget {
     this.handoff,
     this.updateService,
     this.selfUpdateFlow,
+    this.onUnbindProject,
   });
 
   final LauncherServer? server;
@@ -141,6 +146,11 @@ class MacLauncherApp extends StatelessWidget {
   final EntryHandoffCoordinator? handoff;
   final AppUpdateService? updateService;
   final SelfUpdateFlow? selfUpdateFlow;
+
+  /// Unbind entry for the invalid-config guidance (issue #43). Null while
+  /// issue #41's UnbindFlow is not wired; the UI then shows the entry
+  /// disabled with a reason.
+  final Future<void> Function(String projectId)? onUnbindProject;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -157,6 +167,7 @@ class MacLauncherApp extends StatelessWidget {
       handoff: handoff,
       updateService: updateService,
       selfUpdateFlow: selfUpdateFlow,
+      onUnbindProject: onUnbindProject,
     ),
   );
 }
@@ -175,6 +186,7 @@ class ManagementPage extends StatefulWidget {
     this.handoff,
     this.updateService,
     this.selfUpdateFlow,
+    this.onUnbindProject,
   });
 
   final LauncherServer? server;
@@ -186,6 +198,7 @@ class ManagementPage extends StatefulWidget {
   final EntryHandoffCoordinator? handoff;
   final AppUpdateService? updateService;
   final SelfUpdateFlow? selfUpdateFlow;
+  final Future<void> Function(String projectId)? onUnbindProject;
 
   @override
   State<ManagementPage> createState() => _ManagementPageState();
@@ -314,23 +327,64 @@ class _ManagementPageState extends State<ManagementPage> {
     }
   }
 
+  /// Repair-oriented entry on an invalid card (issue #43): the user picks
+  /// the project's configuration again. Conflicts surface with recovery
+  /// wording instead of association-conflict wording.
+  Future<void> _reselectConfig(String projectId) async {
+    String? path;
+    try {
+      path = await _native.invokeMethod<String>('pickManifest');
+    } catch (_) {
+      return;
+    }
+    if (path == null || !mounted) return;
+    try {
+      final flow = AssociationFlow(widget.bindings);
+      final result = await flow.associate(path);
+      if (!mounted) return;
+      switch (result) {
+        case AssociationCreated():
+          setState(() {});
+        case AssociationReused():
+          _toast('该配置已关联，复用原记录。');
+        case AssociationConflict():
+          await _resolveConflict(flow, result, repair: true);
+      }
+      // Whatever the user picked, re-check the invalid project so a
+      // successful repair recovers the card immediately.
+      if (mounted) await _refreshConfig(projectId);
+    } on ManifestException catch (e) {
+      if (!mounted) return;
+      await _alert('无法找回项目配置', '具体原因：${e.reason}\n${e.detail}');
+    }
+  }
+
   Future<void> _resolveConflict(
     AssociationFlow flow,
-    AssociationConflict conflict,
-  ) async {
+    AssociationConflict conflict, {
+    bool repair = false,
+  }) async {
     final existing = conflict.existingBinding;
     final message = switch (conflict.kind) {
       AssociationConflictKind.identityBoundToOtherPath =>
-        '相同的项目身份已在另一路径绑定：\n${existing.manifestPath}\n\n'
-            '迁移会把原绑定（含偏好）移到新路径；作为新项目会为进入的配置生成新的项目身份。',
+        repair
+            ? '这份配置与失效的项目是同一身份（原路径：\n${existing.manifestPath}\n）。\n\n'
+                  '迁移原绑定会把绑定（含偏好）移到新路径，找回配置；'
+                  '作为新项目会为它生成新的项目身份。'
+            : '相同的项目身份已在另一路径绑定：\n${existing.manifestPath}\n\n'
+                  '迁移会把原绑定（含偏好）移到新路径；作为新项目会为进入的配置生成新的项目身份。',
       AssociationConflictKind.pathBoundToOtherIdentity =>
-        '该路径已绑定到另一个项目身份：\n${existing.projectId}\n\n'
-            '迁移会把绑定更新为进入配置的身份；作为新项目会为进入的配置生成新的项目身份。',
+        repair
+            ? '该路径已绑定到另一个项目身份：\n${existing.projectId}\n\n'
+                  '所选配置无法用于找回失效的项目；'
+                  '作为新项目会为它生成新的项目身份。'
+            : '该路径已绑定到另一个项目身份：\n${existing.projectId}\n\n'
+                  '迁移会把绑定更新为进入配置的身份；作为新项目会为进入的配置生成新的项目身份。',
     };
     final choice = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('项目身份冲突'),
+        title: Text(repair ? '找回项目配置' : '项目身份冲突'),
         content: Text(message),
         actions: [
           TextButton(
@@ -387,6 +441,87 @@ class _ManagementPageState extends State<ManagementPage> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  /// The invalid-config explainer appears once ever (flag persisted in the
+  /// preference store) plus at most once per page state, so rebuilds and
+  /// refreshes never nag (issue #43).
+  bool _invalidGuidanceShown = false;
+
+  void _maybeShowInvalidGuidance() {
+    if (_invalidGuidanceShown || widget.preferences.invalidConfigGuidanceSeen) {
+      return;
+    }
+    final hasInvalid = widget.bindings.bindings.any(
+      (b) => widget.refresher.invalidReason(b.projectId) != null,
+    );
+    if (!hasInvalid) return;
+    _invalidGuidanceShown = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('配置失效说明'),
+          content: const Text(
+            '配置失效指绑定记录中的配置文件缺失、不可读或内容不再合法'
+            '（例如项目目录被移动、重命名或删除）。\n\n'
+            '失效只暂停新的启动与通知：绑定、登录启动偏好与运行记录都会保留，'
+            '数据不会丢。你可以重新选择配置完成修复，或解除绑定放弃。\n\n'
+            '此说明只出现一次。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+      await widget.preferences.markInvalidConfigGuidanceSeen();
+    });
+  }
+
+  /// Confirms, then delegates to the unbind entry wired by the app (issue
+  /// #41's UnbindFlow once it lands).
+  Future<void> _confirmUnbind(String projectId) async {
+    final onUnbind = widget.onUnbindProject;
+    if (onUnbind == null) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('解除绑定'),
+        content: const Text(
+          '解除绑定会移除该项目的绑定与登录启动偏好；'
+          '正在运行的实例继续运行，运行记录保留。'
+          '该项目之后可以再次关联。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.dangerSoft,
+              foregroundColor: AppTheme.danger,
+            ),
+            child: const Text('解除绑定'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    try {
+      await onUnbind(projectId);
+      if (!mounted) return;
+      _toast('已解除绑定。');
+      setState(() {});
+    } catch (e) {
+      if (!mounted) return;
+      _toast('解除绑定失败：$e');
+    }
+  }
+
   void _openSettings() {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -419,6 +554,7 @@ class _ManagementPageState extends State<ManagementPage> {
   Widget build(BuildContext context) {
     final registry = widget.server?.registry;
     final bindings = widget.bindings.bindings;
+    _maybeShowInvalidGuidance();
     return Scaffold(
       appBar: AppBar(
         title: const Text('MacLauncher 管理'),
@@ -531,6 +667,11 @@ class _ManagementPageState extends State<ManagementPage> {
                           },
                           onRefreshConfig: () =>
                               _refreshConfig(binding.projectId),
+                          onReselectConfig: () =>
+                              _reselectConfig(binding.projectId),
+                          onUnbind: widget.onUnbindProject == null
+                              ? null
+                              : () => _confirmUnbind(binding.projectId),
                           onChanged: () => setState(() {}),
                         ),
                       ),

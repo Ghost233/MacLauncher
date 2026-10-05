@@ -19,7 +19,9 @@ class ProjectCard extends StatelessWidget {
     required this.handoffStatus,
     required this.onOpenWindow,
     required this.onRefreshConfig,
+    required this.onReselectConfig,
     required this.onChanged,
+    this.onUnbind,
     this.registry,
     this.operations,
     this.updateService,
@@ -34,6 +36,15 @@ class ProjectCard extends StatelessWidget {
   final EntryHandoffStatus handoffStatus;
   final VoidCallback onOpenWindow;
   final VoidCallback onRefreshConfig;
+
+  /// Repair entry of the invalid-config guidance (issue #43): pick the
+  /// project's configuration again.
+  final VoidCallback onReselectConfig;
+
+  /// The other way out of the invalid state (issue #43). Null while unbind
+  /// is not wired (issue #41); the entry then renders disabled with a
+  /// visible reason.
+  final VoidCallback? onUnbind;
   final VoidCallback onChanged;
 
   @override
@@ -115,10 +126,80 @@ class ProjectCard extends StatelessWidget {
                     ),
                     const SizedBox(width: AppTheme.gapSm),
                     Expanded(
-                      child: Text(
-                        '配置失效：${invalid.reason}（${invalid.detail}）。'
-                        '已保留绑定与运行记录，暂停新启动；修复后点「刷新配置」恢复。',
-                        style: AppTheme.caption.copyWith(color: AppTheme.warn),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '配置失效：${invalid.reason}（${invalid.detail}）。'
+                            '已保留绑定与运行记录，暂停新启动。',
+                            style: AppTheme.caption.copyWith(
+                              color: AppTheme.warn,
+                            ),
+                          ),
+                          const SizedBox(height: AppTheme.gapSm),
+                          const Text(
+                            '两条出路：重新选择配置文件完成修复（绑定与偏好迁移'
+                            '到新路径）；或解除绑定放弃，运行记录保留，项目'
+                            '之后可再次关联。',
+                            style: AppTheme.captionMuted,
+                          ),
+                          const SizedBox(height: AppTheme.gapSm),
+                          Row(
+                            children: [
+                              FilledButton.tonalIcon(
+                                onPressed: onReselectConfig,
+                                icon: const Icon(
+                                  Icons.file_open_outlined,
+                                  size: 14,
+                                ),
+                                label: const Text('重新选择配置…'),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: AppTheme.accentSoft,
+                                  foregroundColor: AppTheme.accent,
+                                  textStyle: const TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  minimumSize: const Size(0, 30),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                  ),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                              ),
+                              const SizedBox(width: AppTheme.gapXs),
+                              TextButton(
+                                onPressed: onUnbind,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: AppTheme.danger,
+                                  disabledForegroundColor:
+                                      AppTheme.textTertiary,
+                                  textStyle: const TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  minimumSize: const Size(0, 30),
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                  ),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                child: const Text('解除绑定…'),
+                              ),
+                              if (onUnbind == null) ...[
+                                const SizedBox(width: AppTheme.gapXs),
+                                const Expanded(
+                                  child: Text(
+                                    '解除绑定将在后续版本提供。',
+                                    style: AppTheme.captionMuted,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
                       ),
                     ),
                   ],
