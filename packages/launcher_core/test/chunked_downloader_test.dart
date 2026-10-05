@@ -406,6 +406,44 @@ void main() {
       expect(await ChunkedDownloader.hasResumableState(target), isTrue);
     });
 
+    test('discardResumableState breaks the mismatch retry dead end', () async {
+      final payload = _payload(2 * 8192, 19);
+      final server = _TestServer(payload: payload);
+      await server.start();
+      addTearDown(server.stop);
+
+      final target = targetPath('bad-retry.dmg');
+      // Wrong expectation: the download completes but verification fails,
+      // and the corrupt-by-expectation .part state stays on disk.
+      await expectLater(
+        ChunkedDownloader().download(
+          server.uri,
+          target,
+          chunkSizeBytes: 8192,
+          expectedSha256: _sha256Hex(_payload(64, 99)),
+        ),
+        throwsA(isA<DownloadChecksumMismatchException>()),
+      );
+      expect(await ChunkedDownloader.hasResumableState(target), isTrue);
+
+      // Caller wipes the state; the retry then succeeds from scratch.
+      await ChunkedDownloader.discardResumableState(target);
+      expect(await ChunkedDownloader.hasResumableState(target), isFalse);
+
+      final result = await ChunkedDownloader().download(
+        server.uri,
+        target,
+        chunkSizeBytes: 8192,
+        expectedSha256: _sha256Hex(payload),
+      );
+      expect(result.checksumVerified, isTrue);
+      expect(result.resumed, isFalse);
+      expect(await File(target).readAsBytes(), equals(payload));
+
+      // Discarding again is a no-op, not an error.
+      await ChunkedDownloader.discardResumableState(target);
+    });
+
     test('verification can be skipped by the caller', () async {
       final payload = _payload(2 * 8192, 10);
       final server = _TestServer(payload: payload);

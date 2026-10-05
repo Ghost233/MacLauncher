@@ -57,6 +57,11 @@ class DownloadHttpException extends DownloadException {
 /// The assembled payload does not match the expected sha256. The assembled
 /// file is deleted; the `.part` directory is kept so the caller decides
 /// whether to retry, wipe or investigate.
+///
+/// A plain retry reuses the persisted chunks and therefore fails the same
+/// way. Before retrying, either call
+/// [ChunkedDownloader.discardResumableState] to wipe the corrupt chunks or
+/// download to a different target path.
 class DownloadChecksumMismatchException extends DownloadException {
   const DownloadChecksumMismatchException(this.expected, this.actual)
     : super('sha256 mismatch: expected $expected, got $actual');
@@ -201,8 +206,22 @@ class ChunkedDownloader {
   static const int defaultChunkSizeBytes = 4 * 1024 * 1024;
 
   /// Whether resumable state exists for [targetPath].
+  ///
+  /// This only checks that a `.part` progress manifest is present; the
+  /// download call itself decides whether the state matches (same URL, size
+  /// and chunk size) and wipes it when it does not.
   static Future<bool> hasResumableState(String targetPath) =>
       File('$targetPath.part/manifest.json').exists();
+
+  /// Deletes the `.part` directory for [targetPath], if any.
+  ///
+  /// The caller-owned escape hatch for state that must not be resumed —
+  /// e.g. after a [DownloadChecksumMismatchException], whose persisted
+  /// chunks would otherwise fail every retry identically.
+  static Future<void> discardResumableState(String targetPath) async {
+    final partDir = Directory('$targetPath.part');
+    if (await partDir.exists()) await partDir.delete(recursive: true);
+  }
 
   /// Downloads [source] to [targetPath].
   ///
@@ -499,7 +518,7 @@ class ChunkedDownloader {
     token.throwIfCancelled();
 
     final sha256Hex = collector.value.toString();
-    final verified = _verifyChecksum(
+    final verified = await _verifyChecksum(
       staging,
       sha256Hex,
       expectedSha256,
@@ -549,7 +568,7 @@ class ChunkedDownloader {
     }
 
     final sha256Hex = collector.value.toString();
-    final verified = _verifyChecksum(
+    final verified = await _verifyChecksum(
       assembled,
       sha256Hex,
       expectedSha256,
@@ -570,16 +589,16 @@ class ChunkedDownloader {
 
   /// Returns true when the checksum was actually verified. On mismatch,
   /// deletes [assembledFile] and throws; chunk state is kept for the caller.
-  bool _verifyChecksum(
+  Future<bool> _verifyChecksum(
     File assembledFile,
     String actualHex,
     String? expectedSha256,
     bool verifyChecksum,
-  ) {
+  ) async {
     final expected = expectedSha256?.toLowerCase();
     if (expected == null || !verifyChecksum) return false;
     if (actualHex != expected) {
-      assembledFile.deleteSync();
+      await assembledFile.delete();
       throw DownloadChecksumMismatchException(expected, actualHex);
     }
     return true;
