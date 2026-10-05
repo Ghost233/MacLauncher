@@ -18,6 +18,7 @@ class _Harness {
   late LauncherServer server;
   late ServiceOperations operations;
   late EntryHandoffCoordinator handoff;
+  late UnbindFlow unbindFlow;
 
   static Future<_Harness> create(Map<String, String> services) async {
     final harness = _Harness._();
@@ -57,6 +58,13 @@ class _Harness {
       server: harness.server,
       statusQuery: (_) async => true,
     );
+    harness.unbindFlow = UnbindFlow(
+      bindings: harness.bindings,
+      preferences: harness.preferences,
+      refresher: harness.refresher,
+      handoff: harness.handoff,
+      server: harness.server,
+    );
     return harness;
   }
 
@@ -67,6 +75,7 @@ class _Harness {
     refresher: refresher,
     operations: operations,
     handoff: handoff,
+    unbindFlow: unbindFlow,
   );
 
   Future<MacLauncherSdk> connectSdk(
@@ -320,6 +329,152 @@ void main() {
         expect(openedWindows, 1);
       } finally {
         await sdk?.dispose();
+        await harness.dispose();
+      }
+    });
+  });
+
+  testWidgets('解除绑定：确认对话框展示固定文案与影响摘要，确认后回到空态', (tester) async {
+    await tester.runAsync(() async {
+      final harness = await _Harness.create({'svc': '偏好服务'});
+      try {
+        await harness.preferences.setLoginStartEnabled(
+          'project-a',
+          'svc',
+          true,
+        );
+        await tester.pumpWidget(harness.app());
+        await settle(tester);
+
+        await tester.tap(find.text('解除绑定'));
+        await tester.pumpAndSettle();
+
+        // 固定说明文案 + 动态影响摘要 + 单一确认动作。
+        expect(find.text('解除项目绑定'), findsOneWidget);
+        expect(find.textContaining('取消该项目的登录启动通知，归还原菜单栏入口。'), findsOneWidget);
+        expect(find.textContaining('应用已有业务和日志继续由它自己维护。'), findsOneWidget);
+        expect(find.textContaining('将清除 1 项登录启动偏好'), findsOneWidget);
+        expect(find.text('保留运行并解除绑定'), findsOneWidget);
+        expect(find.text('取消'), findsOneWidget);
+
+        await tester.tap(find.text('保留运行并解除绑定'));
+        await tester.pumpAndSettle();
+        await settle(tester);
+
+        // 卡片消失，回到空态；本地状态全部清除。
+        expect(find.text('项目甲'), findsNothing);
+        expect(find.textContaining('尚未关联任何项目'), findsOneWidget);
+        expect(harness.bindings.bindings, isEmpty);
+        expect(harness.preferences.enabledServices('project-a'), isEmpty);
+        // 持久化：重启后绑定不复活。
+        final reloaded = await BindingStore.load(
+          '${harness.directory.path}/bindings.json',
+        );
+        expect(reloaded.bindings, isEmpty);
+      } finally {
+        await harness.dispose();
+      }
+    });
+  });
+
+  testWidgets('解除绑定：取消后一切不变', (tester) async {
+    await tester.runAsync(() async {
+      final harness = await _Harness.create({'svc': '偏好服务'});
+      try {
+        await tester.pumpWidget(harness.app());
+        await settle(tester);
+
+        await tester.tap(find.text('解除绑定'));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('将清除 0 项登录启动偏好'), findsOneWidget);
+
+        await tester.tap(find.text('取消'));
+        await tester.pumpAndSettle();
+        await settle(tester);
+
+        expect(find.text('项目甲'), findsOneWidget);
+        expect(harness.bindings.bindings, hasLength(1));
+        expect(harness.bindings.byProjectId('project-a'), isNotNull);
+      } finally {
+        await harness.dispose();
+      }
+    });
+  });
+
+  testWidgets('解除绑定：在线受管会话先收到 setEntryManaged(false) 再断连', (tester) async {
+    await tester.runAsync(() async {
+      final harness = await _Harness.create({'svc': '窗口服务'});
+      final entryEvents = <bool>[];
+      MacLauncherSdk? sdk;
+      try {
+        await tester.pumpWidget(harness.app());
+        sdk = await harness.connectSdk(
+          {
+            'svc': ServiceCallbacks(
+              name: '窗口服务',
+              onStatus: () async => ServiceStatus(state: ServiceState.running),
+            ),
+          },
+          app: AppCallbacks(
+            onSetEntryManaged: (managed) async {
+              entryEvents.add(managed);
+              return true;
+            },
+          ),
+        );
+        await settle(tester, const Duration(milliseconds: 800));
+        expect(find.text('统一入口：接管完成'), findsOneWidget);
+
+        await tester.tap(find.text('解除绑定'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('保留运行并解除绑定'));
+        await tester.pumpAndSettle();
+        await settle(tester, const Duration(milliseconds: 800));
+
+        expect(entryEvents, [true, false]);
+        expect(harness.server.registry.isActive('project-a'), isFalse);
+        expect(find.textContaining('尚未关联任何项目'), findsOneWidget);
+      } finally {
+        await sdk?.dispose();
+        await harness.dispose();
+      }
+    });
+  });
+
+  testWidgets('retained 记录可逐条清除', (tester) async {
+    await tester.runAsync(() async {
+      final harness = await _Harness.create({'svc': '旧服务'});
+      try {
+        // 声明移除 svc：产生一条 retained 记录。
+        final manifest = File(
+          '${harness.directory.path}/proj/maclauncher.json',
+        );
+        manifest.writeAsStringSync('''
+{
+  "schemaVersion": 1,
+  "project": {"id": "project-a", "name": "项目甲"},
+  "services": []
+}
+''');
+        await harness.refresher.refresh('project-a');
+        expect(harness.refresher.retainedServices('project-a'), hasLength(1));
+
+        await tester.pumpWidget(harness.app());
+        await settle(tester);
+
+        expect(find.textContaining('声明已移除'), findsOneWidget);
+        await tester.tap(find.text('清除'));
+        await settle(tester);
+
+        expect(find.textContaining('声明已移除'), findsNothing);
+        expect(harness.refresher.retainedServices('project-a'), isEmpty);
+        // 持久化：重新加载后记录不复活。
+        final reloaded = await ConfigRefresher.load(
+          harness.bindings,
+          '${harness.directory.path}/config_state.json',
+        );
+        expect(reloaded.retainedServices('project-a'), isEmpty);
+      } finally {
         await harness.dispose();
       }
     });

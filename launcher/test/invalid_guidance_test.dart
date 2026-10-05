@@ -16,6 +16,9 @@ class _Harness {
   late BindingStore bindings;
   late PreferenceStore preferences;
   late ConfigRefresher refresher;
+  LauncherServer? _server;
+  EntryHandoffCoordinator? _handoff;
+  UnbindFlow? unbindFlow;
 
   String get projectDir => '${directory.path}/proj';
   String get manifestPath => '$projectDir/maclauncher.json';
@@ -51,13 +54,31 @@ class _Harness {
 ''');
   }
 
-  MacLauncherApp app({
-    Future<void> Function(String projectId)? onUnbindProject,
-  }) => MacLauncherApp(
+  /// Wires the real unbind chain (#41's UnbindFlow) with a local server, so
+  /// the wired path of the guidance is exercised end to end.
+  Future<void> enableUnbind() async {
+    _server = await LauncherServer.start(
+      layout: EndpointLayout(directory: '${directory.path}/endpoint'),
+      bindings: bindings,
+    );
+    _handoff = EntryHandoffCoordinator(
+      server: _server!,
+      statusQuery: (_) async => true,
+    );
+    unbindFlow = UnbindFlow(
+      bindings: bindings,
+      preferences: preferences,
+      refresher: refresher,
+      handoff: _handoff!,
+      server: _server!,
+    );
+  }
+
+  MacLauncherApp app() => MacLauncherApp(
     bindings: bindings,
     preferences: preferences,
     refresher: refresher,
-    onUnbindProject: onUnbindProject,
+    unbindFlow: unbindFlow,
   );
 
   Future<void> invalidate() async {
@@ -66,7 +87,9 @@ class _Harness {
     expect(result, isA<RefreshInvalid>());
   }
 
-  void dispose() {
+  Future<void> dispose() async {
+    _handoff?.dispose();
+    await _server?.close();
     if (directory.existsSync()) directory.deleteSync(recursive: true);
   }
 }
@@ -124,7 +147,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('配置失效说明'), findsNothing);
       } finally {
-        harness.dispose();
+        await harness.dispose();
       }
     });
   });
@@ -187,12 +210,13 @@ void main() {
     });
   });
 
-  testWidgets('wired unbind confirms first; retained records stay untouched', (
+  testWidgets('wired unbind goes through UnbindFlow after confirmation', (
     tester,
   ) async {
     await tester.runAsync(() async {
       final harness = await _Harness.create();
       try {
+        await harness.enableUnbind();
         // svc-2 becomes a retained read-only record, then the config goes
         // invalid.
         _Harness.writeManifest(harness.projectDir, ['svc-1']);
@@ -200,17 +224,12 @@ void main() {
         expect(harness.refresher.retainedServices('project-a'), hasLength(1));
         await harness.invalidate();
 
-        final unbound = <String>[];
         await harness.preferences.markInvalidConfigGuidanceSeen();
-        await tester.pumpWidget(
-          harness.app(
-            onUnbindProject: (projectId) async => unbound.add(projectId),
-          ),
-        );
+        await tester.pumpWidget(harness.app());
         await tester.pump();
         await tester.pumpAndSettle();
 
-        // The retained record sits alongside the guidance.
+        // Guidance actions leave the retained read-only record untouched.
         expect(find.textContaining('保留只读记录'), findsOneWidget);
         expect(buttonOf(tester, '解除绑定…').onPressed, isNotNull);
 
@@ -218,21 +237,24 @@ void main() {
         await tester.pump();
         await tester.pumpAndSettle();
 
-        // Confirmation first; nothing has been unbound yet.
-        expect(find.text('解除绑定'), findsWidgets);
-        expect(unbound, isEmpty);
+        // The shared unbind confirmation (#41) comes first; nothing unbound.
+        expect(find.text('解除项目绑定'), findsOneWidget);
+        expect(find.textContaining('将清除 0 项登录启动偏好'), findsOneWidget);
+        expect(harness.bindings.bindings, hasLength(1));
 
-        await tester.tap(find.widgetWithText(FilledButton, '解除绑定'));
+        await tester.tap(find.text('保留运行并解除绑定'));
         await tester.pump();
         await settle(tester);
         await tester.pumpAndSettle();
 
-        expect(unbound, ['project-a']);
-        // Guidance actions never touch retained read-only records.
-        expect(find.textContaining('保留只读记录'), findsOneWidget);
-        expect(harness.refresher.retainedServices('project-a'), hasLength(1));
+        // UnbindFlow ran its逐条 path: binding, preferences and the
+        // invalid/retained residue are gone; the card list is empty.
+        expect(harness.bindings.bindings, isEmpty);
+        expect(harness.refresher.retainedServices('project-a'), isEmpty);
+        expect(find.textContaining('尚未关联任何项目。'), findsOneWidget);
+        expect(find.text('已解除绑定。'), findsOneWidget);
       } finally {
-        harness.dispose();
+        await harness.dispose();
       }
     });
   });

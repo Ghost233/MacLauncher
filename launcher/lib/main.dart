@@ -63,6 +63,7 @@ Future<void> main() async {
   LauncherServer? server;
   ServiceOperations? operations;
   EntryHandoffCoordinator? handoff;
+  UnbindFlow? unbindFlow;
   Object? error;
   try {
     server = await LauncherServer.start(layout: layout, bindings: bindings);
@@ -88,6 +89,13 @@ Future<void> main() async {
       },
     );
     await refresher.refreshAll();
+    unbindFlow = UnbindFlow(
+      bindings: bindings,
+      preferences: prefs,
+      refresher: refresher,
+      handoff: handoff,
+      server: server,
+    );
     await AutostartNotifier(preferences: prefs)
         .runOnce(bindings: bindings, startService: operations.start);
   } catch (e) {
@@ -112,12 +120,9 @@ Future<void> main() async {
       refresher: refresher,
       operations: operations,
       handoff: handoff,
+      unbindFlow: unbindFlow,
       updateService: AppUpdateService(layout: layout),
       selfUpdateFlow: selfUpdateFlow,
-      // Unbind entry for the invalid-config guidance (issue #43): wired to
-      // UnbindFlow.unbind once issue #41 lands on the integration branch;
-      // until then the card shows the entry disabled with a reason.
-      onUnbindProject: null,
     ),
   );
 }
@@ -132,9 +137,9 @@ class MacLauncherApp extends StatelessWidget {
     this.serverError,
     this.operations,
     this.handoff,
+    this.unbindFlow,
     this.updateService,
     this.selfUpdateFlow,
-    this.onUnbindProject,
   });
 
   final LauncherServer? server;
@@ -144,13 +149,9 @@ class MacLauncherApp extends StatelessWidget {
   final ConfigRefresher refresher;
   final ServiceOperations? operations;
   final EntryHandoffCoordinator? handoff;
+  final UnbindFlow? unbindFlow;
   final AppUpdateService? updateService;
   final SelfUpdateFlow? selfUpdateFlow;
-
-  /// Unbind entry for the invalid-config guidance (issue #43). Null while
-  /// issue #41's UnbindFlow is not wired; the UI then shows the entry
-  /// disabled with a reason.
-  final Future<void> Function(String projectId)? onUnbindProject;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -165,9 +166,9 @@ class MacLauncherApp extends StatelessWidget {
       refresher: refresher,
       operations: operations,
       handoff: handoff,
+      unbindFlow: unbindFlow,
       updateService: updateService,
       selfUpdateFlow: selfUpdateFlow,
-      onUnbindProject: onUnbindProject,
     ),
   );
 }
@@ -184,9 +185,9 @@ class ManagementPage extends StatefulWidget {
     this.serverError,
     this.operations,
     this.handoff,
+    this.unbindFlow,
     this.updateService,
     this.selfUpdateFlow,
-    this.onUnbindProject,
   });
 
   final LauncherServer? server;
@@ -196,9 +197,9 @@ class ManagementPage extends StatefulWidget {
   final ConfigRefresher refresher;
   final ServiceOperations? operations;
   final EntryHandoffCoordinator? handoff;
+  final UnbindFlow? unbindFlow;
   final AppUpdateService? updateService;
   final SelfUpdateFlow? selfUpdateFlow;
-  final Future<void> Function(String projectId)? onUnbindProject;
 
   @override
   State<ManagementPage> createState() => _ManagementPageState();
@@ -436,6 +437,51 @@ class _ManagementPageState extends State<ManagementPage> {
     }
   }
 
+  /// 解除绑定：确认对话框只有一个动作——「保留运行并解除绑定」。
+  /// 固定说明文案 + 动态影响摘要（docs/design.md 锚点）；取消后一切不变。
+  Future<void> _unbind(ProjectBinding binding) async {
+    final flow = widget.unbindFlow;
+    if (flow == null) return;
+    final preferenceCount = widget.preferences
+        .enabledServices(binding.projectId)
+        .length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('解除项目绑定'),
+        content: Text(
+          '取消该项目的登录启动通知，归还原菜单栏入口。\n'
+          '应用已有业务和日志继续由它自己维护。\n\n'
+          '将清除 $preferenceCount 项登录启动偏好。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.danger,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('保留运行并解除绑定'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    try {
+      await flow.unbind(binding.projectId);
+      if (!mounted) return;
+      setState(() => _handoffStatus.remove(binding.projectId));
+      _toast('已解除绑定。');
+    } catch (e) {
+      if (!mounted) return;
+      await _alert('解除绑定失败', '$e');
+    }
+  }
+
   void _toast(String message) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
@@ -478,48 +524,6 @@ class _ManagementPageState extends State<ManagementPage> {
       );
       await widget.preferences.markInvalidConfigGuidanceSeen();
     });
-  }
-
-  /// Confirms, then delegates to the unbind entry wired by the app (issue
-  /// #41's UnbindFlow once it lands).
-  Future<void> _confirmUnbind(String projectId) async {
-    final onUnbind = widget.onUnbindProject;
-    if (onUnbind == null) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('解除绑定'),
-        content: const Text(
-          '解除绑定会移除该项目的绑定与登录启动偏好；'
-          '正在运行的实例继续运行，运行记录保留。'
-          '该项目之后可以再次关联。',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppTheme.dangerSoft,
-              foregroundColor: AppTheme.danger,
-            ),
-            child: const Text('解除绑定'),
-          ),
-        ],
-      ),
-    );
-    if (!mounted || confirmed != true) return;
-    try {
-      await onUnbind(projectId);
-      if (!mounted) return;
-      _toast('已解除绑定。');
-      setState(() {});
-    } catch (e) {
-      if (!mounted) return;
-      _toast('解除绑定失败：$e');
-    }
   }
 
   void _openSettings() {
@@ -669,9 +673,9 @@ class _ManagementPageState extends State<ManagementPage> {
                               _refreshConfig(binding.projectId),
                           onReselectConfig: () =>
                               _reselectConfig(binding.projectId),
-                          onUnbind: widget.onUnbindProject == null
+                          onUnbind: widget.unbindFlow == null
                               ? null
-                              : () => _confirmUnbind(binding.projectId),
+                              : () => _unbind(binding),
                           onChanged: () => setState(() {}),
                         ),
                       ),

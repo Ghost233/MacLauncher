@@ -41,11 +41,11 @@ class ProjectCard extends StatelessWidget {
   /// project's configuration again.
   final VoidCallback onReselectConfig;
 
-  /// The other way out of the invalid state (issue #43). Null while unbind
-  /// is not wired (issue #41); the entry then renders disabled with a
-  /// visible reason.
-  final VoidCallback? onUnbind;
   final VoidCallback onChanged;
+
+  /// 解除绑定入口；为 null（启动器未就绪）时不显示。失效态引导框中的
+  /// 「解除绑定…」共用此回调（issue #43），此时入口置灰并注明原因。
+  final VoidCallback? onUnbind;
 
   @override
   Widget build(BuildContext context) {
@@ -101,6 +101,19 @@ class ProjectCard extends StatelessWidget {
                   onPressed: onRefreshConfig,
                   icon: const Icon(Icons.sync),
                 ),
+                if (onUnbind != null && invalid == null)
+                  TextButton.icon(
+                    onPressed: onUnbind,
+                    icon: const Icon(Icons.link_off, size: 14),
+                    label: const Text('解除绑定'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppTheme.danger,
+                      textStyle: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: AppTheme.gapXs),
@@ -238,6 +251,23 @@ class ProjectCard extends StatelessWidget {
                         '不代表运行已终止。',
                         style: AppTheme.captionMuted,
                       ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        await refresher.removeRetained(
+                          binding.projectId,
+                          service.id,
+                        );
+                        onChanged();
+                      },
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppTheme.neutral,
+                        textStyle: const TextStyle(fontSize: 12.5),
+                        minimumSize: const Size(0, 28),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text('清除'),
                     ),
                   ],
                 ),
