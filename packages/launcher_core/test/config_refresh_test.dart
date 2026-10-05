@@ -395,4 +395,76 @@ void main() {
       expect(await refresher.refresh('ghost'), isA<RefreshNotBound>());
     });
   });
+  group('corrupted storage', () {
+    test('malformed JSON is backed up and the state starts empty', () async {
+      File(statePath).writeAsStringSync('not json');
+
+      final refresher = await newRefresher();
+
+      expect(refresher.invalidReason('proj-a'), isNull);
+      expect(refresher.retainedServices('proj-a'), isEmpty);
+      final report = refresher.corruptionReport;
+      expect(report, isNotNull);
+      expect(report!.filePath, statePath);
+      expect(report.skippedRecords, 0);
+      expect(File(statePath).existsSync(), isFalse);
+      expect(report.backupPath, isNotNull);
+      expect(report.backupPath, contains('.corrupt-'));
+      expect(File(report.backupPath!).readAsStringSync(), 'not json');
+    });
+
+    test(
+      'a non-map top level is backed up and the state starts empty',
+      () async {
+        File(statePath).writeAsStringSync('[{"invalid": {}}]');
+
+        final refresher = await newRefresher();
+
+        expect(refresher.corruptionReport, isNotNull);
+        expect(refresher.corruptionReport!.backupPath, isNotNull);
+        expect(File(statePath).existsSync(), isFalse);
+        expect(
+          File(refresher.corruptionReport!.backupPath!).readAsStringSync(),
+          '[{"invalid": {}}]',
+        );
+      },
+    );
+
+    test('invalid entries are skipped while good entries are kept', () async {
+      File(statePath).writeAsStringSync(
+        const JsonEncoder.withIndent('  ').convert({
+          'invalid': {
+            'proj-good': {
+              'reason': 'invalidStructure',
+              'detail': 'broken edit',
+            },
+            'proj-bad': 'not a record',
+          },
+          'retained': {
+            'proj-good': [
+              {'id': 'svc-1', 'name': '服务一', 'removedAt': 'bad date'},
+              'not a retained record',
+            ],
+            'proj-bad': 'not a list',
+          },
+        }),
+      );
+
+      final refresher = await newRefresher();
+
+      expect(refresher.invalidReason('proj-good'), isNotNull);
+      expect(refresher.invalidReason('proj-good')!.detail, 'broken edit');
+      expect(refresher.invalidReason('proj-bad'), isNull);
+      final retained = refresher.retainedServices('proj-good');
+      expect(retained, hasLength(1));
+      expect(retained.single.id, 'svc-1');
+      expect(refresher.retainedServices('proj-bad'), isEmpty);
+      expect(File(statePath).existsSync(), isTrue);
+      final report = refresher.corruptionReport;
+      expect(report, isNotNull);
+      expect(report!.filePath, statePath);
+      expect(report.backupPath, isNull);
+      expect(report.skippedRecords, 3);
+    });
+  });
 }

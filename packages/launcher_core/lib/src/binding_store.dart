@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'binding_lookup.dart';
 import 'manifest.dart';
+import 'storage_corruption.dart';
 
 /// A registered association between a project and its manifest, kept in the
 /// launcher's own local storage. Never written back into the project
@@ -49,21 +50,77 @@ class ProjectBinding {
 
 /// Local, launcher-owned store of project bindings.
 class BindingStore implements BindingLookup {
-  BindingStore._(this._file, this._bindings);
+  BindingStore._(this._file, this._bindings, this.corruptionReport);
 
   final File _file;
   final List<ProjectBinding> _bindings;
 
+  /// Damage found while loading, or null when the file was fully healthy.
+  final StorageCorruptionReport? corruptionReport;
+
+  /// Loads the store, tolerating damage: unparseable JSON or a non-list
+  /// top level moves the original aside to `.corrupt-<timestamp>` and
+  /// starts empty; individually invalid records are skipped while good
+  /// records load normally. Either shape is exposed via
+  /// [corruptionReport]; loading never throws for damaged content.
   static Future<BindingStore> load(String filePath) async {
     final file = File(filePath);
     if (!file.existsSync()) {
-      return BindingStore._(file, []);
+      return BindingStore._(file, [], null);
     }
-    final decoded = jsonDecode(await file.readAsString());
-    final list = (decoded as List)
-        .map((e) => ProjectBinding.fromJson((e as Map).cast<String, Object?>()))
-        .toList();
-    return BindingStore._(file, list);
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(await file.readAsString());
+    } on FormatException {
+      return BindingStore._(file, [], await _wholeFileCorruption(file));
+    }
+    if (decoded is! List) {
+      return BindingStore._(file, [], await _wholeFileCorruption(file));
+    }
+    final bindings = <ProjectBinding>[];
+    var skipped = 0;
+    for (final element in decoded) {
+      final binding = _tryParseBinding(element);
+      if (binding == null) {
+        skipped++;
+      } else {
+        bindings.add(binding);
+      }
+    }
+    return BindingStore._(
+      file,
+      bindings,
+      skipped > 0
+          ? StorageCorruptionReport(
+              filePath: file.path,
+              backupPath: null,
+              skippedRecords: skipped,
+            )
+          : null,
+    );
+  }
+
+  static Future<StorageCorruptionReport> _wholeFileCorruption(
+    File file,
+  ) async => StorageCorruptionReport(
+    filePath: file.path,
+    backupPath: await backupCorruptedFile(file),
+    skippedRecords: 0,
+  );
+
+  /// A record is usable only when it parses and carries a project identity
+  /// plus a manifest path; anything less is damage, not a binding.
+  static ProjectBinding? _tryParseBinding(Object? element) {
+    try {
+      if (element is! Map) return null;
+      final binding = ProjectBinding.fromJson(element.cast<String, Object?>());
+      if (binding.projectId.isEmpty || binding.manifestPath.isEmpty) {
+        return null;
+      }
+      return binding;
+    } catch (_) {
+      return null;
+    }
   }
 
   List<ProjectBinding> get bindings => List.unmodifiable(_bindings);

@@ -252,4 +252,76 @@ void main() {
       expect(server.registry.byProject('proj-a'), isNotNull);
     });
   });
+
+  group('corrupted storage', () {
+    test('malformed JSON is backed up and the store starts empty', () async {
+      File(storePath).writeAsStringSync('{not json at all');
+
+      final store = await BindingStore.load(storePath);
+
+      expect(store.bindings, isEmpty);
+      final report = store.corruptionReport;
+      expect(report, isNotNull);
+      expect(report!.filePath, storePath);
+      expect(report.skippedRecords, 0);
+      // The original moved aside: app never trips over it again.
+      expect(File(storePath).existsSync(), isFalse);
+      final backupPath = report.backupPath;
+      expect(backupPath, isNotNull);
+      expect(backupPath, contains('.corrupt-'));
+      expect(File(backupPath!).readAsStringSync(), '{not json at all');
+    });
+
+    test('a non-list top level is backed up and the store starts empty', () async {
+      File(storePath).writeAsStringSync('{"projectId": "proj-a"}');
+
+      final store = await BindingStore.load(storePath);
+
+      expect(store.bindings, isEmpty);
+      final report = store.corruptionReport;
+      expect(report, isNotNull);
+      expect(report!.backupPath, isNotNull);
+      expect(File(storePath).existsSync(), isFalse);
+      expect(
+        File(report.backupPath!).readAsStringSync(),
+        '{"projectId": "proj-a"}',
+      );
+    });
+
+    test('invalid records are skipped while good records are kept', () async {
+      final good = ProjectBinding(
+        projectId: 'proj-good',
+        name: '好项目',
+        manifestPath: '${temp.path}/good/maclauncher.json',
+        services: const [],
+        boundAt: DateTime.utc(2026, 1, 1),
+      );
+      File(storePath).writeAsStringSync(
+        const JsonEncoder.withIndent('  ').convert([
+          good.toJson(),
+          'not a record at all',
+          {'name': '缺身份字段'}, // no projectId / manifestPath
+          {
+            'projectId': 'proj-bad-services',
+            'manifestPath': '${temp.path}/bad/maclauncher.json',
+            'services': 'not-a-list',
+          },
+        ]),
+      );
+
+      final store = await BindingStore.load(storePath);
+
+      expect(store.bindings, hasLength(1));
+      expect(store.byProjectId('proj-good'), isNotNull);
+      expect(store.byProjectId('proj-good')!.name, '好项目');
+      // The file itself is readable, so it stays in place; only the skip
+      // is reported.
+      expect(File(storePath).existsSync(), isTrue);
+      final report = store.corruptionReport;
+      expect(report, isNotNull);
+      expect(report!.filePath, storePath);
+      expect(report.backupPath, isNull);
+      expect(report.skippedRecords, 3);
+    });
+  });
 }

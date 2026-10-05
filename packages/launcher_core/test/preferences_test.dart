@@ -266,4 +266,63 @@ void main() {
       },
     );
   });
+  group('corrupted storage', () {
+    test('malformed JSON is backed up and the store starts empty', () async {
+      File(prefsPath).writeAsStringSync('{"proj-a": broken');
+
+      final store = await PreferenceStore.load(prefsPath);
+
+      expect(store.projects, isEmpty);
+      expect(store.updateCheckOnLaunch, isTrue); // defaults still apply
+      final report = store.corruptionReport;
+      expect(report, isNotNull);
+      expect(report!.filePath, prefsPath);
+      expect(report.skippedRecords, 0);
+      expect(File(prefsPath).existsSync(), isFalse);
+      expect(report.backupPath, isNotNull);
+      expect(report.backupPath, contains('.corrupt-'));
+      expect(
+        File(report.backupPath!).readAsStringSync(),
+        '{"proj-a": broken',
+      );
+    });
+
+    test(
+      'a non-map top level is backed up and the store starts empty',
+      () async {
+        File(prefsPath).writeAsStringSync('["proj-a"]');
+
+        final store = await PreferenceStore.load(prefsPath);
+
+        expect(store.projects, isEmpty);
+        final report = store.corruptionReport;
+        expect(report, isNotNull);
+        expect(report!.backupPath, isNotNull);
+        expect(File(prefsPath).existsSync(), isFalse);
+        expect(File(report.backupPath!).readAsStringSync(), '["proj-a"]');
+      },
+    );
+
+    test('invalid entries are skipped while good entries are kept', () async {
+      File(prefsPath).writeAsStringSync(
+        const JsonEncoder.withIndent('  ').convert({
+          'proj-good': {'svc-1': true},
+          'proj-bad': 42, // not a service map
+          '@updates': {'checkOnLaunch': false},
+        }),
+      );
+
+      final store = await PreferenceStore.load(prefsPath);
+
+      expect(store.isLoginStartEnabled('proj-good', 'svc-1'), isTrue);
+      expect(store.projects, {'proj-good'});
+      expect(store.updateCheckOnLaunch, isFalse);
+      expect(File(prefsPath).existsSync(), isTrue);
+      final report = store.corruptionReport;
+      expect(report, isNotNull);
+      expect(report!.filePath, prefsPath);
+      expect(report.backupPath, isNull);
+      expect(report.skippedRecords, 1);
+    });
+  });
 }
