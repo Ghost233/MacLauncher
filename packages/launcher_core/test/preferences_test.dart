@@ -314,10 +314,7 @@ void main() {
       expect(File(prefsPath).existsSync(), isFalse);
       expect(report.backupPath, isNotNull);
       expect(report.backupPath, contains('.corrupt-'));
-      expect(
-        File(report.backupPath!).readAsStringSync(),
-        '{"proj-a": broken',
-      );
+      expect(File(report.backupPath!).readAsStringSync(), '{"proj-a": broken');
     });
 
     test(

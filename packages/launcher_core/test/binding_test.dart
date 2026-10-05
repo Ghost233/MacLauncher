@@ -272,21 +272,24 @@ void main() {
       expect(File(backupPath!).readAsStringSync(), '{not json at all');
     });
 
-    test('a non-list top level is backed up and the store starts empty', () async {
-      File(storePath).writeAsStringSync('{"projectId": "proj-a"}');
+    test(
+      'a non-list top level is backed up and the store starts empty',
+      () async {
+        File(storePath).writeAsStringSync('{"projectId": "proj-a"}');
 
-      final store = await BindingStore.load(storePath);
+        final store = await BindingStore.load(storePath);
 
-      expect(store.bindings, isEmpty);
-      final report = store.corruptionReport;
-      expect(report, isNotNull);
-      expect(report!.backupPath, isNotNull);
-      expect(File(storePath).existsSync(), isFalse);
-      expect(
-        File(report.backupPath!).readAsStringSync(),
-        '{"projectId": "proj-a"}',
-      );
-    });
+        expect(store.bindings, isEmpty);
+        final report = store.corruptionReport;
+        expect(report, isNotNull);
+        expect(report!.backupPath, isNotNull);
+        expect(File(storePath).existsSync(), isFalse);
+        expect(
+          File(report.backupPath!).readAsStringSync(),
+          '{"projectId": "proj-a"}',
+        );
+      },
+    );
 
     test('invalid records are skipped while good records are kept', () async {
       final good = ProjectBinding(

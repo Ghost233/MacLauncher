@@ -314,7 +314,8 @@ class _ManagementPageState extends State<ManagementPage> {
   static String _basename(String path) =>
       path.replaceAll('\\', '/').split('/').last;
 
-  Future<void> _loadLoginItemStatus() async {    try {
+  Future<void> _loadLoginItemStatus() async {
+    try {
       final status = await _native.invokeMethod<String>('loginItemStatus');
       if (mounted && status != null) {
         setState(() => _loginItemStatus = status);
