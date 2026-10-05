@@ -57,3 +57,7 @@ Flutter 应用位于 `launcher/`，纯 Dart 核心与 SDK 位于 `packages/`，�
 - [Flutter 架构建议](https://docs.flutter.dev/app-architecture/recommendations)：职责分离、数据流和条件性建议。
 - [Flutter 架构示例](https://docs.flutter.dev/app-architecture/case-study)：UI 按功能与数据按职责组织的示例。
 - [Flutter 仓库风格指南](https://github.com/flutter/flutter/blob/master/docs/contributing/Style-guide-for-Flutter-repo.md)：按需参考；框架仓库的特殊政策不自动成为应用要求。
+
+### 测试入口约定
+
+一律经 `./scripts/check-flutter.sh test`（核心/SDK 走 dart test，launcher 走 flutter test）。不要在 packages/ 或 example/ 下直接调 `flutter test`——其编译路径不支持 `Isolate.resolvePackageUriSync`，测试会在加载期失败或挂起。

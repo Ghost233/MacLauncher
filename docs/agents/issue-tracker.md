@@ -54,3 +54,13 @@ retry gh issue comment 27 -R Ghost233/MacLauncher --body-file report.md
 ```
 
 一次失败后不要立刻改判「操作未发生」——先重试或先读回状态验证。
+
+## 网络抖动
+
+gh API 偶发 TLS handshake timeout。所有写操作用重试循环包一层（4 次、间隔 5s 实测可过）：
+
+```sh
+retry() { for i in 1 2 3 4; do "$@" && return 0; sleep 5; done; return 1; }
+```
+
+gh 命令必须在仓库目录内运行或显式 `-R Ghost233/MacLauncher`。
