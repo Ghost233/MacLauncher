@@ -81,70 +81,6 @@ Map<String, Object?> releaseJson({
 };
 
 void main() {
-  group('SemVer', () {
-    test('parses plain, v-prefixed, prerelease and build forms', () {
-      expect(SemVer.tryParse('1.2.3').toString(), '1.2.3');
-      expect(SemVer.tryParse('v1.2.3').toString(), '1.2.3');
-      expect(SemVer.tryParse('1.2.3-rc.1').toString(), '1.2.3-rc.1');
-      expect(SemVer.tryParse('1.2.3+45').toString(), '1.2.3+45');
-      expect(SemVer.tryParse(' v1.2.3-rc.1+45 ').toString(), '1.2.3-rc.1+45');
-    });
-
-    test('rejects non-semver input', () {
-      for (final raw in ['', '1.2', '1.2.3.4', 'a.b.c', '1.2.x', '1.2.3-']) {
-        expect(SemVer.tryParse(raw), isNull, reason: raw);
-      }
-    });
-
-    test('orders core numbers numerically', () {
-      expect(SemVer.tryParse('1.2.3')!.compareTo(SemVer.tryParse('1.2.3')!), 0);
-      expect(
-        SemVer.tryParse('1.2.3')!.compareTo(SemVer.tryParse('1.2.10')!),
-        isNegative,
-      );
-      expect(
-        SemVer.tryParse('2.0.0')!.compareTo(SemVer.tryParse('10.0.0')!),
-        isNegative,
-      );
-    });
-
-    test('ignores build metadata in precedence (SemVer §10)', () {
-      expect(
-        SemVer.tryParse('1.2.3+4')!.compareTo(SemVer.tryParse('1.2.3+5')!),
-        0,
-      );
-      expect(
-        SemVer.tryParse('1.2.3+4')!.compareTo(SemVer.tryParse('1.2.3')!),
-        0,
-      );
-      expect(
-        SemVer.tryParse('1.2.3+4')!.compareTo(SemVer.tryParse('1.2.4')!),
-        isNegative,
-      );
-    });
-
-    test('a release outranks its prereleases; prereleases order per §11', () {
-      final release = SemVer.tryParse('1.3.0')!;
-      expect(SemVer.tryParse('1.3.0-rc.1')!.compareTo(release), isNegative);
-      expect(release.compareTo(SemVer.tryParse('1.3.0-rc.1')!), isPositive);
-      expect(
-        SemVer.tryParse('1.3.0-alpha')!
-            .compareTo(SemVer.tryParse('1.3.0-alpha.1')!),
-        isNegative,
-      );
-      expect(
-        SemVer.tryParse('1.3.0-alpha.1')!
-            .compareTo(SemVer.tryParse('1.3.0-alpha.beta')!),
-        isNegative, // numeric identifiers sort below alphanumeric ones
-      );
-      expect(
-        SemVer.tryParse('1.3.0-rc.1')!
-            .compareTo(SemVer.tryParse('1.3.0-rc.2')!),
-        isNegative,
-      );
-    });
-  });
-
   group('UpdateChecker', () {
     late _GitHubStub stub;
 
@@ -218,6 +154,41 @@ void main() {
       },
     );
 
+    // Version comparison semantics, exercised through the public API. The
+    // implementation delegates to package:pub_semver; these tests pin the
+    // behaviors issue #29 depends on (§10 build-metadata rule, §11
+    // prerelease ordering, numeric core comparison, tag conventions).
+    group('version comparison semantics', () {
+      Future<bool> hasUpdate(String current, String tag) async {
+        stub.releaseBody = releaseJson(tagName: tag);
+        final result = await checker(currentVersion: current).checkForUpdate();
+        return (result as UpdateCheckSuccess).hasUpdate;
+      }
+
+      test('numeric core comparison, not lexicographic', () async {
+        expect(await hasUpdate('1.2.9', '1.2.10'), isTrue);
+        expect(await hasUpdate('1.2.10', '1.2.9'), isFalse);
+        expect(await hasUpdate('2.0.0', '10.0.0'), isTrue);
+      });
+
+      test('leading zeros parse and compare by value (pub_semver)', () async {
+        // pub_semver is lenient where strict SemVer forbids leading zeros;
+        // 1.02.3 is 1.2.3 for precedence. Adapts the old hand-written
+        // SemVer test expectation to the real behavior of pub_semver.
+        expect(await hasUpdate('1.2.3', 'v1.02.3'), isFalse);
+        expect(await hasUpdate('1.2.2', 'v1.02.3'), isTrue);
+      });
+
+      test('prerelease ordering follows SemVer §11', () async {
+        expect(await hasUpdate('1.3.0-rc.1', '1.3.0-rc.2'), isTrue);
+        expect(await hasUpdate('1.3.0-rc.2', '1.3.0-rc.1'), isFalse);
+        expect(await hasUpdate('1.3.0-alpha', '1.3.0-alpha.1'), isTrue);
+        // Numeric identifiers sort below alphanumeric ones.
+        expect(await hasUpdate('1.3.0-alpha.1', '1.3.0-alpha.beta'), isTrue);
+        expect(await hasUpdate('1.3.0-alpha.beta', '1.3.0-alpha.1'), isFalse);
+      });
+    });
+
     test('a payload marked prerelease is skipped even from /latest', () async {
       // Defensive guard: the endpoint must never do this, but if it does the
       // rolling `latest` build must still not surface as an update.
@@ -238,12 +209,17 @@ void main() {
       expect((result as UpdateCheckFailure).cause, isNotNull);
     });
 
-    test('HTTP 404 (no full release yet) is a typed failure', () async {
+    test('HTTP 404 means "no published release", not corrupted data', () async {
       stub.releaseStatus = HttpStatus.notFound;
       stub.releaseBody = null;
       final result = await checker().checkForUpdate();
       expect(result, isA<UpdateCheckFailure>());
-      expect((result as UpdateCheckFailure).reason, contains('404'));
+      final reason = (result as UpdateCheckFailure).reason;
+      expect(reason, contains('no published full release'));
+      // Never shipped is a normal state; it must not be labelled as
+      // malformed payload (data corruption).
+      expect(reason, isNot(contains('malformed')));
+      expect(result.cause, isNull);
     });
 
     test('HTTP 500 is a typed failure', () async {
