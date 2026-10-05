@@ -208,6 +208,10 @@ String generateProjectId() {
 /// original formatting. Falls back to a full re-encode (field order
 /// preserved) when the surgical edit cannot locate the id value, e.g. when
 /// it contains escaped characters.
+///
+/// The write is atomic (temp file + rename, original permission bits
+/// preserved): this is the user's manifest, a torn write must never leave
+/// it unreadable.
 Future<void> rewriteProjectId(String canonicalPath, String newProjectId) async {
   final file = File(canonicalPath);
   final source = await file.readAsString();
@@ -222,13 +226,13 @@ Future<void> rewriteProjectId(String canonicalPath, String newProjectId) async {
     if (idMatch != null) {
       final start = projectStart.end + idMatch.start;
       final end = projectStart.end + idMatch.end;
-      await file.writeAsString(
+      await _atomicRewrite(
+        file,
         source.replaceRange(
           start,
           end,
           '${idMatch[1]}${jsonEncode(newProjectId)}',
         ),
-        flush: true,
       );
       return;
     }
@@ -238,8 +242,25 @@ Future<void> rewriteProjectId(String canonicalPath, String newProjectId) async {
   final decoded = (jsonDecode(source) as Map).cast<String, Object?>();
   final project = (decoded['project'] as Map).cast<String, Object?>();
   project['id'] = newProjectId;
-  await file.writeAsString(
+  await _atomicRewrite(
+    file,
     const JsonEncoder.withIndent('  ').convert(decoded),
-    flush: true,
   );
+}
+
+/// Writes [content] to [file] atomically: temp sibling + rename, keeping
+/// the original file's permission bits on the replacement.
+Future<void> _atomicRewrite(File file, String content) async {
+  final originalMode = (await file.stat()).mode;
+  final tmp = File('${file.path}.rewrite-tmp');
+  await tmp.writeAsString(content, flush: true);
+  final chmod = await Process.run('chmod', [
+    (originalMode & 0xFFF).toRadixString(8),
+    tmp.path,
+  ]);
+  if (chmod.exitCode != 0) {
+    await tmp.delete().then((_) {}, onError: (_) {});
+    throw StateError('chmod ${tmp.path} failed: ${chmod.stderr}');
+  }
+  await tmp.rename(file.path);
 }

@@ -338,6 +338,25 @@ void main() {
       expect(ProjectManifest.parse(after).projectId, created.projectId);
     });
 
+    test('the rewrite is atomic and preserves file permissions', () async {
+      final path = writeManifest('perms', validManifest());
+      final chmod = await Process.run('chmod', ['640', path]);
+      expect(chmod.exitCode, 0);
+      final store = await BindingStore.load(storePath);
+      final flow = AssociationFlow(store);
+
+      await flow.associateAsNewProject(path);
+
+      // 0640 survives the rewrite: temp file + rename, not an in-place write.
+      expect(FileStat.statSync(path).mode & 0x1FF, 0x1A0);
+      expect(File('$path.rewrite-tmp').existsSync(), isFalse);
+      // Result still parses and carries the new identity.
+      expect(
+        ProjectManifest.parse(File(path).readAsStringSync()).projectId,
+        isNot('proj-a'),
+      );
+    });
+
     test('new-project on an already-bound path is refused', () async {
       final pathA = writeManifest('a', validManifest());
       final store = await BindingStore.load(storePath);
