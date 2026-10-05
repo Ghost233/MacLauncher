@@ -262,6 +262,27 @@ class ConfigRefresher {
     return results;
   }
 
+  /// Unbind path: drops all refresh state (invalid/retained) for the
+  /// project and persists the removal. No-op (no write) when the project
+  /// has no recorded state.
+  Future<void> purge(String projectId) async {
+    final hadInvalid = _invalid.remove(projectId) != null;
+    final hadRetained = _retained.remove(projectId) != null;
+    if (hadInvalid || hadRetained) await _saveState();
+  }
+
+  /// Drops a single retained record (manual per-row 清除入口), keeping the
+  /// rest. No-op when the project or the record does not exist.
+  Future<void> removeRetained(String projectId, String serviceId) async {
+    final retained = _retained[projectId];
+    if (retained == null) return;
+    final before = retained.length;
+    retained.removeWhere((r) => r.id == serviceId);
+    if (retained.length == before) return;
+    if (retained.isEmpty) _retained.remove(projectId);
+    await _saveState();
+  }
+
   Future<void> _saveState() async {
     await _stateFile.parent.create(recursive: true);
     final tmp = File('${_stateFile.path}.tmp');

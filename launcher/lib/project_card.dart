@@ -20,6 +20,7 @@ class ProjectCard extends StatelessWidget {
     required this.onOpenWindow,
     required this.onRefreshConfig,
     required this.onChanged,
+    this.onUnbind,
     this.registry,
     this.operations,
     this.updateService,
@@ -35,6 +36,9 @@ class ProjectCard extends StatelessWidget {
   final VoidCallback onOpenWindow;
   final VoidCallback onRefreshConfig;
   final VoidCallback onChanged;
+
+  /// 解除绑定入口；为 null（启动器未就绪）时不显示。
+  final VoidCallback? onUnbind;
 
   @override
   Widget build(BuildContext context) {
@@ -90,6 +94,19 @@ class ProjectCard extends StatelessWidget {
                   onPressed: onRefreshConfig,
                   icon: const Icon(Icons.sync),
                 ),
+                if (onUnbind != null)
+                  TextButton.icon(
+                    onPressed: onUnbind,
+                    icon: const Icon(Icons.link_off, size: 14),
+                    label: const Text('解除绑定'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppTheme.danger,
+                      textStyle: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
               ],
             ),
             const SizedBox(height: AppTheme.gapXs),
@@ -157,6 +174,23 @@ class ProjectCard extends StatelessWidget {
                         '不代表运行已终止。',
                         style: AppTheme.captionMuted,
                       ),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        await refresher.removeRetained(
+                          binding.projectId,
+                          service.id,
+                        );
+                        onChanged();
+                      },
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppTheme.neutral,
+                        textStyle: const TextStyle(fontSize: 12.5),
+                        minimumSize: const Size(0, 28),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text('清除'),
                     ),
                   ],
                 ),

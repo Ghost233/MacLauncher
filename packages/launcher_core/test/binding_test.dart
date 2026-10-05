@@ -184,6 +184,43 @@ void main() {
     });
   });
 
+  group('remove', () {
+    test('removes the binding and persists the removal', () async {
+      final manifestPath = writeManifest('a', validManifest());
+      final store = await BindingStore.load(storePath);
+      await store.associate(manifestPath);
+
+      await store.remove('proj-a');
+
+      expect(store.bindings, isEmpty);
+      expect(store.byProjectId('proj-a'), isNull);
+      expect(store.byManifestPath(manifestPath), isNull);
+      expect(store.isKnownProject('proj-a'), isFalse);
+
+      // Persisted: a fresh store instance no longer sees the binding.
+      final reloaded = await BindingStore.load(storePath);
+      expect(reloaded.bindings, isEmpty);
+    });
+
+    test('removing an unknown project throws and changes nothing', () async {
+      final manifestPath = writeManifest('a', validManifest());
+      final store = await BindingStore.load(storePath);
+      await store.associate(manifestPath);
+
+      expect(
+        () => store.remove('stranger'),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('stranger'),
+          ),
+        ),
+      );
+      expect(store.bindings, hasLength(1));
+    });
+  });
+
   group('handshake integration', () {
     test('only bound projects pass the handshake', () async {
       final manifestPath = writeManifest('a', validManifest());
