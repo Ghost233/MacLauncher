@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:launcher_core/launcher_core.dart';
+import 'package:minimal_app/fake_version_status.dart';
 import 'package:test/test.dart';
 
 import 'support.dart';
@@ -11,19 +12,11 @@ import 'support.dart';
 /// `example/minimal_app` binary (spawned as a subprocess) for its 版本状况
 /// over a real socket and receives each of the three configurable states.
 ///
-/// The expected fake values below mirror
-/// `example/minimal_app/lib/fake_version_status.dart`; keep them in sync.
+/// The expected fake values are shared with the demo via
+/// `package:minimal_app/fake_version_status.dart`, so the test cannot drift
+/// from the implementation it exercises.
 void main() {
   const timeout = Timeout(Duration(minutes: 2));
-
-  /// The demo's fixed fake values (see fake_version_status.dart).
-  const demoCurrentVersion = '1.0.0';
-  const demoLatestVersion = '1.1.0';
-  const demoDownloadUrl =
-      'https://example.invalid/minimal_app/minimal_app-1.1.0.dmg';
-  const demoSha256 =
-      '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
-  const demoFailureReason = 'mock 网络失败：更新源不可达';
 
   group('demo minimal_app version status (real subprocess)', () {
     late Directory temp;
@@ -127,37 +120,37 @@ void main() {
     );
 
     test('success: full fake update answer arrives verbatim', () async {
-      await runDemoApp(extraArgs: ['--version-status=success']);
+      await runDemoApp(extraArgs: ['--$kVersionStatusFlag=success']);
 
       final result = await ops().versionStatus('proj-a');
 
       final status = (result as VersionStatusSnapshot).status;
       expect(status.state.name, 'success');
-      expect(status.currentVersion, demoCurrentVersion);
+      expect(status.currentVersion, kDemoCurrentVersion);
       expect(status.hasUpdate, isTrue);
-      expect(status.latestVersion, demoLatestVersion);
-      expect(status.downloadUrl, demoDownloadUrl);
-      expect(status.sha256, demoSha256);
+      expect(status.latestVersion, kDemoLatestVersion);
+      expect(status.downloadUrl, kDemoDownloadUrl);
+      expect(status.sha256, kDemoSha256);
       expect(status.failureReason, isNull);
     }, timeout: timeout);
 
     test(
       'failure: query failure arrives as a failure answer with reason',
       () async {
-        await runDemoApp(extraArgs: ['--version-status=failure']);
+        await runDemoApp(extraArgs: ['--$kVersionStatusFlag=failure']);
 
         final result = await ops().versionStatus('proj-a');
 
         final status = (result as VersionStatusSnapshot).status;
         expect(status.state.name, 'failure');
-        expect(status.currentVersion, demoCurrentVersion);
-        expect(status.failureReason, demoFailureReason);
+        expect(status.currentVersion, kDemoCurrentVersion);
+        expect(status.failureReason, kDemoFailureReason);
       },
       timeout: timeout,
     );
 
     test('unsupported: no capability declared, launcher never asks', () async {
-      await runDemoApp(extraArgs: ['--version-status=unsupported']);
+      await runDemoApp(extraArgs: ['--$kVersionStatusFlag=unsupported']);
 
       expect(
         server.registry
@@ -179,17 +172,14 @@ void main() {
       'environment variable selects the mode when no flag is given',
       () async {
         await runDemoApp(
-          environment: {
-            ...Platform.environment,
-            'MACLAUNCHER_VERSION_STATUS': 'failure',
-          },
+          environment: {...Platform.environment, kVersionStatusEnv: 'failure'},
         );
 
         final result = await ops().versionStatus('proj-a');
 
         final status = (result as VersionStatusSnapshot).status;
         expect(status.state.name, 'failure');
-        expect(status.failureReason, demoFailureReason);
+        expect(status.failureReason, kDemoFailureReason);
       },
       timeout: timeout,
     );
@@ -200,7 +190,7 @@ void main() {
         'run',
         'example/minimal_app/bin/minimal_app.dart',
         'proj-a',
-        '--version-status=bogus',
+        '--$kVersionStatusFlag=bogus',
       ], workingDirectory: root.path);
       final err = await process.stderr.transform(utf8.decoder).join();
       final exitCode = await process.exitCode;

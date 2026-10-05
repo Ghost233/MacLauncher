@@ -113,22 +113,27 @@ AppCallbacks(
 ## 版本状况查询
 
 启动器可以询问应用的「版本状况」（当前版本、是否有新版本、最新版本号、
-下载地址、查询结果）。注册 `onVersionStatus` 即声明该能力：
+下载地址、查询结果）。注册 `onVersionStatus` 即声明该能力。如何查询
+更新源由你的应用自己决定（SDK 不含下载能力）。
+
+可运行的参照实现见 `example/minimal_app/`（#35）：它按固定假数据应答，
+接入方可直接照抄 `lib/fake_version_status.dart` 的注册方式。联调时用
+`--version-status=success|failure|unsupported` 命令行参数或
+`MACLAUNCHER_VERSION_STATUS` 环境变量（参数优先）切换三态：
+成功（含新版本号、下载地址与 sha256）、失败（附原因）、不支持更新
+（不注册回调，验证 SDK 自动应答）。
 
 ```dart
+// 摘自 example/minimal_app/lib/fake_version_status.dart：
 AppCallbacks(
-  onVersionStatus: () async {
-    // 如何查询更新源由你的应用自己决定（SDK 不含下载能力）。
-    final latest = await checkMyUpdateSource();
-    return VersionStatus(
-      state: VersionQueryState.success,
-      currentVersion: '1.2.0',
-      hasUpdate: latest != null,
-      latestVersion: latest?.version,
-      downloadUrl: latest?.url,
-      sha256: latest?.sha256,   // 可选，供后续下载校验
-    );
-  },
+  onVersionStatus: () async => VersionStatus(
+    state: VersionQueryState.success,
+    currentVersion: '1.0.0',
+    hasUpdate: true,
+    latestVersion: '1.1.0',
+    downloadUrl: 'https://example.invalid/minimal_app/minimal_app-1.1.0.dmg',
+    sha256: kDemoSha256,   // 可选，供后续下载校验
+  ),
 )
 ```
 
