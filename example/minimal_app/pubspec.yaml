@@ -1,0 +1,15 @@
+name: minimal_app
+description: Minimal controlled SDK peer used by tests and demos. It implements no real container/model/web business.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+
+resolution: workspace
+
+dependencies:
+  maclauncher_sdk: ^0.1.0
+
+dev_dependencies:
+  test: ^1.25.0

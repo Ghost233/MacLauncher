@@ -1,0 +1,12 @@
+name: maclauncher_sdk
+description: Dart SDK for integrating standalone applications with the MacLauncher unified entry.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+
+resolution: workspace
+
+dev_dependencies:
+  test: ^1.25.0
