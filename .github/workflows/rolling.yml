@@ -1,0 +1,52 @@
+name: Rolling (latest)
+
+# 合入 main 触发滚动构建：
+# 同一构建打包管线，滚动更新名为 latest 的 prerelease（--clobber 覆盖旧 asset）。
+# 与打 tag 的正式发布（release.yml）相区分，见 CONTEXT.md「滚动构建」。
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rolling-latest
+  cancel-in-progress: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-macos-dmg.yml
+    with:
+      version: latest
+    permissions:
+      contents: read
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: maclauncher-dmg-latest
+          path: dist
+
+      - name: Rolling-update latest prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # 首次没有 latest 时创建；之后每次用 --clobber 覆盖同名 asset。
+          if ! gh release view latest >/dev/null 2>&1; then
+            gh release create latest \
+              --prerelease \
+              --title "latest (rolling)" \
+              --notes "滚动构建：随 main 更新。"
+          fi
+          gh release upload latest dist/* --clobber
+          gh release edit latest --notes "滚动构建：main@${GITHUB_SHA:0:7}（$(date -u +%Y-%m-%d) UTC 构建）。DMG 未签名，完整性核对见 SHA256SUMS.txt。"
