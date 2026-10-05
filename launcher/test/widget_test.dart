@@ -117,12 +117,10 @@ void main() {
       );
       try {
         // Damage two of the three local stores before the app loads them.
-        File(
-          '${directory.path}/bindings.json',
-        ).writeAsStringSync('{oops not json');
-        File('${directory.path}/preferences.json').writeAsStringSync(
-          '{"proj-a": {"svc": true}, "proj-bad": 42}',
-        );
+        File('${directory.path}/bindings.json')
+            .writeAsStringSync('{oops not json');
+        File('${directory.path}/preferences.json')
+            .writeAsStringSync('{"proj-a": {"svc": true}, "proj-bad": 42}');
         final bindings = await BindingStore.load(
           '${directory.path}/bindings.json',
         );

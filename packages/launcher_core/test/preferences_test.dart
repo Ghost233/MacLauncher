@@ -154,6 +154,39 @@ void main() {
       expect(reloaded.updateAutoDownload, isTrue);
       expect(reloaded.projects, {'proj-a'});
     });
+
+    test(
+      'invalid-config guidance seen flag defaults to false on an old file',
+      () async {
+        // A preference file written before the guidance flag existed.
+        File(prefsPath).writeAsStringSync('{"proj-a": {"svc-1": true}}');
+
+        final store = await PreferenceStore.load(prefsPath);
+        expect(store.invalidConfigGuidanceSeen, isFalse);
+        expect(store.isLoginStartEnabled('proj-a', 'svc-1'), isTrue);
+        expect(store.projects, {'proj-a'});
+      },
+    );
+
+    test(
+      'invalid-config guidance seen flag round-trips through save and reload',
+      () async {
+        final store = await PreferenceStore.load(prefsPath);
+        expect(store.invalidConfigGuidanceSeen, isFalse);
+
+        await store.markInvalidConfigGuidanceSeen();
+
+        final reloaded = await PreferenceStore.load(prefsPath);
+        expect(reloaded.invalidConfigGuidanceSeen, isTrue);
+        // The guidance section is not a project and never leaks into the
+        // project view; update preferences are untouched.
+        expect(reloaded.projects, isEmpty);
+        expect(reloaded.updateCheckOnLaunch, isTrue);
+
+        final mode = FileStat.statSync(prefsPath).mode & 0xFFF;
+        expect(mode, int.parse('600', radix: 8));
+      },
+    );
   });
 
   group('AutostartNotifier', () {
@@ -281,10 +314,7 @@ void main() {
       expect(File(prefsPath).existsSync(), isFalse);
       expect(report.backupPath, isNotNull);
       expect(report.backupPath, contains('.corrupt-'));
-      expect(
-        File(report.backupPath!).readAsStringSync(),
-        '{"proj-a": broken',
-      );
+      expect(File(report.backupPath!).readAsStringSync(), '{"proj-a": broken');
     });
 
     test(
