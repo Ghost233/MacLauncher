@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:launcher_core/launcher_core.dart';
 import 'package:maclauncher_sdk/maclauncher_sdk.dart';
 
+import 'app_update_section.dart';
 import 'log_panel.dart';
 import 'theme.dart';
 
@@ -21,11 +22,13 @@ class ProjectCard extends StatelessWidget {
     required this.onChanged,
     this.registry,
     this.operations,
+    this.updateService,
   });
 
   final ProjectBinding binding;
   final ConnectionRegistry? registry;
   final ServiceOperations? operations;
+  final AppUpdateService? updateService;
   final PreferenceStore preferences;
   final ConfigRefresher refresher;
   final EntryHandoffStatus handoffStatus;
@@ -158,6 +161,16 @@ class ProjectCard extends StatelessWidget {
                   ],
                 ),
               ),
+            // App-level version status + 代下载: every value comes from the
+            // application's versionStatus answer; the section hides its
+            // download entry until an update with a URL is reported.
+            AppUpdateSection(
+              key: ValueKey('${binding.projectId}/app-update'),
+              projectId: binding.projectId,
+              registry: registry,
+              operations: operations,
+              updateService: updateService,
+            ),
           ],
         ),
       ),
