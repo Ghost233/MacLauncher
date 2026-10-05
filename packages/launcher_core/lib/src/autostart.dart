@@ -56,8 +56,7 @@ class AutostartReport {
 /// seam: the entry-opening path lives behind it, and query-like operations
 /// must never imply an entry open.
 class AutostartNotifier {
-  AutostartNotifier({required PreferenceStore preferences})
-    : _preferences = preferences;
+  AutostartNotifier({required this._preferences});
 
   final PreferenceStore _preferences;
   var _ran = false;

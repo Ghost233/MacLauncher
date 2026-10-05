@@ -72,7 +72,7 @@ class RawPeerConnection {
       'type': 'request',
       'id': id,
       'method': method,
-      if (serviceId != null) 'serviceId': serviceId,
+      'serviceId': ?serviceId,
     });
   }
 

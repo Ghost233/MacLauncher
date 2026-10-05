@@ -170,14 +170,11 @@ class BindingServiceScope implements ServiceScopeLookup {
 /// Launcher-side service operations over live SDK sessions.
 class ServiceOperations {
   ServiceOperations({
-    required LauncherServer server,
-    required ServiceScopeLookup scope,
-    Duration timeout = kDefaultRequestTimeout,
-    LaunchOrchestrator? launcher,
-  }) : _server = server,
-       _scope = scope,
-       _timeout = timeout,
-       _launcher = launcher;
+    required this._server,
+    required this._scope,
+    this._timeout = kDefaultRequestTimeout,
+    this._launcher,
+  });
 
   final LauncherServer _server;
   final ServiceScopeLookup _scope;

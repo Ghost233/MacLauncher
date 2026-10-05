@@ -6,7 +6,7 @@ import 'package:minimal_app/fake_business.dart';
 
 /// Minimal controlled peer: registers two fake services and stays connected.
 ///
-/// Usage: dart run bin/minimal_app.dart <projectId> [socketPath]
+/// Usage: `dart run bin/minimal_app.dart <projectId> [socketPath]`
 Future<void> main(List<String> args) async {
   if (args.isEmpty) {
     stderr.writeln('usage: minimal_app <projectId> [socketPath]');

@@ -17,4 +17,7 @@ dependencies:
   maclauncher_sdk: ^0.1.0
 
 dev_dependencies:
+  # Tests drive the controlled SDK peer from example/ (handshake and
+  # autostart scenarios).
+  minimal_app: ^0.1.0
   test: ^1.25.0

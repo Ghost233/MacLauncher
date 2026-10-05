@@ -191,14 +191,14 @@ void main() {
       final notifier = AutostartNotifier(preferences: prefs);
       await notifier.runOnce(
         bindings: bindings,
-        startService: (_, __) async {
+        startService: (_, _) async {
           calls++;
           return const OperationAcknowledged();
         },
       );
       final second = await notifier.runOnce(
         bindings: bindings,
-        startService: (_, __) async {
+        startService: (_, _) async {
           calls++;
           return const OperationAcknowledged();
         },
@@ -224,7 +224,7 @@ void main() {
         final notifier = AutostartNotifier(preferences: prefs);
         final report = await notifier.runOnce(
           bindings: bindings,
-          startService: (_, __) async {
+          startService: (_, _) async {
             calls++;
             return const OperationAcknowledged();
           },

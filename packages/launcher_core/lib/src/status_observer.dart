@@ -50,16 +50,12 @@ class StatusObserver {
   StatusObserver({
     required this.projectId,
     required this.serviceId,
-    required ServiceOperations operations,
-    required bool Function() isConnected,
-    Duration refreshInterval = const Duration(seconds: 5),
-    Duration staleAfter = const Duration(seconds: 15),
+    required this._operations,
+    required this._isConnected,
+    this._refreshInterval = const Duration(seconds: 5),
+    this._staleAfter = const Duration(seconds: 15),
     DateTime Function()? clock,
-  }) : _operations = operations,
-       _isConnected = isConnected,
-       _refreshInterval = refreshInterval,
-       _staleAfter = staleAfter,
-       _clock = clock ?? DateTime.now;
+  }) : _clock = clock ?? DateTime.now;
 
   final String projectId;
   final String serviceId;

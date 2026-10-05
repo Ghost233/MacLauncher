@@ -110,7 +110,7 @@ void main() {
       {'id': 'svc', 'name': '服务'},
     ],
     'integration': {'type': 'sdk'},
-    if (entry != null) 'entry': entry,
+    'entry': ?entry,
   };
 
   void killReportedPid(String reportPath) {

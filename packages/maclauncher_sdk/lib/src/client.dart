@@ -81,18 +81,13 @@ class SdkConnectionStatus {
 class MacLauncherSdk {
   MacLauncherSdk._({
     required this.projectId,
-    required Map<String, ServiceCallbacks> services,
-    required AppCallbacks? app,
-    required String socketPath,
-    required Duration retryInterval,
-    required Duration pingInterval,
-    required Duration pongTimeout,
-  }) : _services = services,
-       _app = app,
-       _socketPath = socketPath,
-       _retryInterval = retryInterval,
-       _pingInterval = pingInterval,
-       _pongTimeout = pongTimeout {
+    required this._services,
+    required this._app,
+    required this._socketPath,
+    required this._retryInterval,
+    required this._pingInterval,
+    required this._pongTimeout,
+  }) {
     _appSessionId = _newSessionId();
     _loop = Future(_runLoop);
   }

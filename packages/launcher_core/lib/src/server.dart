@@ -25,12 +25,10 @@ class LauncherServer {
   LauncherServer._({
     required this.layout,
     required this.registry,
-    required EndpointLock lock,
-    required ServerSocket socket,
-    required String runId,
-  }) : _lock = lock,
-       _socket = socket,
-       _runId = runId {
+    required this._lock,
+    required this._socket,
+    required this._runId,
+  }) {
     _acceptSub = _socket.listen(_onConnection);
   }
 
@@ -132,11 +130,10 @@ class LauncherServer {
 /// One accepted (or in-handshake) connection.
 class ServerSession {
   ServerSession._({
-    required Socket socket,
-    required LauncherServer server,
+    required this._socket,
+    required this._server,
     required this.launcherSessionId,
-  }) : _socket = socket,
-       _server = server;
+  });
 
   final Socket _socket;
   final LauncherServer _server;
@@ -247,8 +244,9 @@ class ServerSession {
     final capabilities = hello['capabilities'];
     if (capabilities is! Map ||
         capabilities['services'] is! List ||
-        capabilities['app'] is! List)
+        capabilities['app'] is! List) {
       return false;
+    }
     bool validMethods(Object? value, Set<String> allowed) =>
         value is List &&
         value.every((m) => m is String && allowed.contains(m)) &&
@@ -296,8 +294,8 @@ class ServerSession {
       'type': 'request',
       'id': id,
       'method': method,
-      if (serviceId != null) 'serviceId': serviceId,
-      if (params != null) 'params': params,
+      'serviceId': ?serviceId,
+      'params': ?params,
     });
     try {
       return await completer.future.timeout(timeout);
