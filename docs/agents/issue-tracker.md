@@ -6,6 +6,8 @@
 
 必须使用 `Ghost233`。执行需要身份验证的 `gh` 业务命令前，先运行 `gh auth switch --hostname github.com --user Ghost233`，再运行 `gh api --hostname github.com user --jq .login`。只有实际身份返回 `Ghost233` 才能继续；环境中的 `GH_TOKEN` 或 `GITHUB_TOKEN` 也必须满足该要求。切换或验证失败时，停止后续操作并告知用户。
 
+deck 插件的建票/改票工具（`deck_issue_create`、`deck_issue_patch` 等）内部走 `gh` 活跃账号，同样适用上述前置：调用它们之前必须先完成验证，否则票会以错误账号创建（真实事故：#39/#40 以 Charlotte-765 创建后删除重建）。
+
 ## 约定
 
 - **创建 issue**：`gh issue create --title "..." --body-file <正文文件>`。多行正文先写入临时文件，保留真实换行。
@@ -14,6 +16,7 @@
 - **评论 issue**：`gh issue comment <number> --body-file <正文文件>`。
 - **添加/移除标签**：`gh issue edit <number> --add-label "..."` / `--remove-label "..."`。
 - **关闭**：`gh issue close <number> --comment "..."`。
+- **并行实施 worktree**：一律建在仓库外的 sibling 目录 `../MacLauncher.worktrees/<name>`。仓库内的 `MacLauncher.worktrees/` 不在 .gitignore，建在 repo 内会污染 `git status`。
 
 在当前 clone 内运行时，`gh` 从 Git remote 推断仓库。需要明确目标时使用 `--repo Ghost233/MacLauncher`；`gh api` 的仓库端点使用 `repos/Ghost233/MacLauncher/...`。
 
@@ -53,14 +56,6 @@ retry() { for i in 1 2 3 4; do "$@" && return 0; sleep 5; done; return 1; }
 retry gh issue comment 27 -R Ghost233/MacLauncher --body-file report.md
 ```
 
-一次失败后不要立刻改判「操作未发生」——先重试或先读回状态验证。
-
-## 网络抖动
-
-gh API 偶发 TLS handshake timeout。所有写操作用重试循环包一层（4 次、间隔 5s 实测可过）：
-
-```sh
-retry() { for i in 1 2 3 4; do "$@" && return 0; sleep 5; done; return 1; }
-```
+一次失败后不要立刻改判「操作未发生」——先重试或先读回状态验证。重试只针对网络类失败；确定性报错（如 `Unknown JSON field`）重试无意义，直接修正命令。
 
 gh 命令必须在仓库目录内运行或显式 `-R Ghost233/MacLauncher`。

@@ -72,7 +72,8 @@ void main() {
         'run',
         peerPath,
         layout.directory,
-      ]).timeout(const Duration(seconds: 5));
+        // dart run 现场编译 peer，冷/慢机器上远超 5s；留足编译余量。
+      ]).timeout(const Duration(seconds: 15));
       expect(challenger.exitCode, 73);
       final sdk = MacLauncherSdk.connect(
         projectId: 'project',
@@ -96,7 +97,8 @@ void main() {
           .transform(utf8.decoder)
           .transform(const LineSplitter())
           .first
-          .timeout(const Duration(seconds: 5));
+          // 同上：peer 进程的 dart run 编译时间计入此超时。
+          .timeout(const Duration(seconds: 15));
       expect(ready, 'owned');
       await expectLater(
         LauncherServer.start(
