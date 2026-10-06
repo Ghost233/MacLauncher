@@ -156,6 +156,11 @@ AppCallbacks(
   （默认 `retryInterval: 5s`）；启动器未运行时静默等待，无需自己重试。
 - `states` 广播流：`disconnected / connecting / connected / rejected`
   （`rejected` 带拒绝原因，如未关联、身份冲突）。
+- **解除绑定的表现**：用户在启动器里解除绑定后，在线应用会先收到
+  `setEntryManaged(false)` 归还入口，随后会话被主动关闭；SDK 的自动重连
+  会以「未关联」持续被拒（`rejected` 按重连间隔反复出现）。接入方应将
+  **持续 rejected（未关联）视为绑定已解除**：提示用户重新关联，或停止
+  等待并退回独立运行，不要无限静默重试。
 - 内置 ping/pong 看门狗（5s 心跳，15s 超时判定死亡并触发重连）。
 - `dispose()`：停止重连、销毁在途连接；可中断重试中的等待，调用后
   实例不可复用。
