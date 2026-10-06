@@ -1,7 +1,7 @@
 name: maclauncher
 description: "GhostLauncher: personal menu-bar launcher for standalone projects."
 publish_to: 'none'
-version: 1.0.4+1
+version: 1.0.5+1
 
 resolution: workspace
 
