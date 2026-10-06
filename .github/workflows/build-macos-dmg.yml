@@ -53,7 +53,8 @@ jobs:
           set -euo pipefail
           app="launcher/build/macos/Build/Products/Release/${APP_NAME}.app"
           test -d "$app" || { echo "::error::Build product not found: $app"; exit 1; }
-          dmg="Ghost Launcher-${{ inputs.version }}.dmg"
+          # GitHub replaces spaces in asset names; keep filenames stable for SHA256SUMS.
+          dmg="Ghost-Launcher-${{ inputs.version }}.dmg"
           mkdir -p dist staging
           cp -R "$app" staging/
           ln -s /Applications staging/Applications
