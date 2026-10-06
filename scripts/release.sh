@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# release.sh — MacLauncher 标准发版（issue #28）
+# release.sh — GhostLauncher 标准发版（issue #28）
 #
 # 流程：读 launcher/pubspec.yaml 版本 → patch +0.0.1（build 号重置为 1）→
 # 写回并提交（仅 pubspec.yaml）→ push origin main → 打 vX.Y.Z+N tag → push tag。
@@ -147,7 +147,7 @@ run git commit -m "chore(release): $tag"
 info "推送 main…"
 git push origin main || die "push main 失败：版本提交仅在本地，可直接重试 git push origin main，勿重复运行本脚本（会再次进位版本）"
 
-run git tag -a "$tag" -m "MacLauncher $tag"
+run git tag -a "$tag" -m "GhostLauncher $tag"
 
 info "推送 tag ${tag}…"
 git push origin "$tag" || die "push tag 失败：main 已推送但 tag 未发出。恢复：git push origin ${tag}（tag 已在本地创建）"

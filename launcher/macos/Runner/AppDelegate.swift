@@ -14,14 +14,14 @@ class AppDelegate: FlutterAppDelegate {
     if let button = item.button {
       button.image = NSImage(
         systemSymbolName: "square.grid.2x2",
-        accessibilityDescription: "MacLauncher")
+        accessibilityDescription: "GhostLauncher")
     }
     let menu = NSMenu()
     menu.addItem(NSMenuItem(
       title: "显示管理窗口", action: #selector(showMainWindow), keyEquivalent: ""))
     menu.addItem(.separator())
     menu.addItem(NSMenuItem(
-      title: "退出 MacLauncher", action: #selector(quitApp), keyEquivalent: "q"))
+      title: "退出 GhostLauncher", action: #selector(quitApp), keyEquivalent: "q"))
     item.menu = menu
     statusItem = item
 

@@ -1,2 +1,2 @@
-# MacLauncher
-MacLauncher
+# GhostLauncher
+GhostLauncher
