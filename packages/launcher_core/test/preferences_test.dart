@@ -154,6 +154,39 @@ void main() {
       expect(reloaded.updateAutoDownload, isTrue);
       expect(reloaded.projects, {'proj-a'});
     });
+
+    test(
+      'invalid-config guidance seen flag defaults to false on an old file',
+      () async {
+        // A preference file written before the guidance flag existed.
+        File(prefsPath).writeAsStringSync('{"proj-a": {"svc-1": true}}');
+
+        final store = await PreferenceStore.load(prefsPath);
+        expect(store.invalidConfigGuidanceSeen, isFalse);
+        expect(store.isLoginStartEnabled('proj-a', 'svc-1'), isTrue);
+        expect(store.projects, {'proj-a'});
+      },
+    );
+
+    test(
+      'invalid-config guidance seen flag round-trips through save and reload',
+      () async {
+        final store = await PreferenceStore.load(prefsPath);
+        expect(store.invalidConfigGuidanceSeen, isFalse);
+
+        await store.markInvalidConfigGuidanceSeen();
+
+        final reloaded = await PreferenceStore.load(prefsPath);
+        expect(reloaded.invalidConfigGuidanceSeen, isTrue);
+        // The guidance section is not a project and never leaks into the
+        // project view; update preferences are untouched.
+        expect(reloaded.projects, isEmpty);
+        expect(reloaded.updateCheckOnLaunch, isTrue);
+
+        final mode = FileStat.statSync(prefsPath).mode & 0xFFF;
+        expect(mode, int.parse('600', radix: 8));
+      },
+    );
   });
 
   group('AutostartNotifier', () {
@@ -265,5 +298,61 @@ void main() {
         expect(report.skipped.single.reason, contains('no longer declared'));
       },
     );
+  });
+  group('corrupted storage', () {
+    test('malformed JSON is backed up and the store starts empty', () async {
+      File(prefsPath).writeAsStringSync('{"proj-a": broken');
+
+      final store = await PreferenceStore.load(prefsPath);
+
+      expect(store.projects, isEmpty);
+      expect(store.updateCheckOnLaunch, isTrue); // defaults still apply
+      final report = store.corruptionReport;
+      expect(report, isNotNull);
+      expect(report!.filePath, prefsPath);
+      expect(report.skippedRecords, 0);
+      expect(File(prefsPath).existsSync(), isFalse);
+      expect(report.backupPath, isNotNull);
+      expect(report.backupPath, contains('.corrupt-'));
+      expect(File(report.backupPath!).readAsStringSync(), '{"proj-a": broken');
+    });
+
+    test(
+      'a non-map top level is backed up and the store starts empty',
+      () async {
+        File(prefsPath).writeAsStringSync('["proj-a"]');
+
+        final store = await PreferenceStore.load(prefsPath);
+
+        expect(store.projects, isEmpty);
+        final report = store.corruptionReport;
+        expect(report, isNotNull);
+        expect(report!.backupPath, isNotNull);
+        expect(File(prefsPath).existsSync(), isFalse);
+        expect(File(report.backupPath!).readAsStringSync(), '["proj-a"]');
+      },
+    );
+
+    test('invalid entries are skipped while good entries are kept', () async {
+      File(prefsPath).writeAsStringSync(
+        const JsonEncoder.withIndent('  ').convert({
+          'proj-good': {'svc-1': true},
+          'proj-bad': 42, // not a service map
+          '@updates': {'checkOnLaunch': false},
+        }),
+      );
+
+      final store = await PreferenceStore.load(prefsPath);
+
+      expect(store.isLoginStartEnabled('proj-good', 'svc-1'), isTrue);
+      expect(store.projects, {'proj-good'});
+      expect(store.updateCheckOnLaunch, isFalse);
+      expect(File(prefsPath).existsSync(), isTrue);
+      final report = store.corruptionReport;
+      expect(report, isNotNull);
+      expect(report!.filePath, prefsPath);
+      expect(report.backupPath, isNull);
+      expect(report.skippedRecords, 1);
+    });
   });
 }

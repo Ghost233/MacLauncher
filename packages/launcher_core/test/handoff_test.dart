@@ -310,4 +310,84 @@ void main() {
     await coordinator.releaseAll();
     expect(recycleCalls, 0);
   });
+
+  group('release（解除绑定路径）', () {
+    test('向在线受管会话发送 managed:false 并清除状态', () async {
+      final server = await startServer();
+      addTearDown(server.close);
+      final coordinator = EntryHandoffCoordinator(
+        server: server,
+        statusQuery: (_) async => true,
+        releaseTimeout: const Duration(milliseconds: 300),
+      );
+      addTearDown(coordinator.dispose);
+
+      final entry = RecordingEntryCallbacks();
+      final sdk = connectApp(entry);
+      addTearDown(sdk.dispose);
+      await until(
+        () => coordinator.statusOf('proj-1') == EntryHandoffStatus.managed,
+      );
+
+      await coordinator.release('proj-1');
+
+      expect(entry.events, contains('setEntryManaged(false)'));
+      expect(coordinator.statusOf('proj-1'), EntryHandoffStatus.unmanaged);
+    });
+
+    test('应用迟迟不确认归还：短超时后返回，状态仍清除', () async {
+      final server = await startServer();
+      addTearDown(server.close);
+      final coordinator = EntryHandoffCoordinator(
+        server: server,
+        statusQuery: (_) async => true,
+        releaseTimeout: const Duration(milliseconds: 100),
+      );
+      addTearDown(coordinator.dispose);
+
+      final entry = RecordingEntryCallbacks()..setEntryGate = Completer<void>();
+      final sdk = connectApp(entry);
+      addTearDown(sdk.dispose);
+      // 先让接管确认完成（闸门只挡第二次调用）。
+      entry.setEntryGate!.complete();
+      await until(
+        () => coordinator.statusOf('proj-1') == EntryHandoffStatus.managed,
+      );
+      entry.setEntryGate = Completer<void>();
+      addTearDown(() {
+        if (!entry.setEntryGate!.isCompleted) entry.setEntryGate!.complete();
+      });
+
+      await coordinator.release('proj-1');
+
+      expect(coordinator.statusOf('proj-1'), EntryHandoffStatus.unmanaged);
+    });
+
+    test('对未受管或离线的项目是 no-op，不报错、不发请求', () async {
+      final server = await startServer();
+      addTearDown(server.close);
+      final coordinator = EntryHandoffCoordinator(
+        server: server,
+        statusQuery: (_) async => true,
+        releaseTimeout: const Duration(milliseconds: 300),
+      );
+      addTearDown(coordinator.dispose);
+
+      // 完全未连接的项目。
+      await coordinator.release('ghost');
+
+      // 已连接但能力不含 setEntryManaged（从未受管）。
+      final entry = RecordingEntryCallbacks();
+      final sdk = connectApp(entry, declareEntryManaged: false);
+      addTearDown(sdk.dispose);
+      await until(
+        () =>
+            coordinator.statusOf('proj-1') == EntryHandoffStatus.notManageable,
+      );
+
+      await coordinator.release('proj-1');
+
+      expect(entry.events, isNot(contains('setEntryManaged(false)')));
+    });
+  });
 }

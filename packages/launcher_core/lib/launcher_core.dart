@@ -22,4 +22,6 @@ export 'src/registry.dart';
 export 'src/self_update_service.dart';
 export 'src/server.dart';
 export 'src/status_observer.dart';
+export 'src/storage_corruption.dart';
+export 'src/unbind_flow.dart';
 export 'src/update_checker.dart';

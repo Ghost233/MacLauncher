@@ -257,6 +257,103 @@ void main() {
     );
   });
 
+  group('purge', () {
+    test(
+      'clears invalid and retained state for the project, persisted',
+      () async {
+        final path = writeManifest('v1', manifest());
+        await bind(path);
+        final other = writeManifest(
+          'o1',
+          manifest(id: 'proj-b', name: '项目 B'),
+          projectDir: 'proj-b',
+        );
+        await bind(other);
+        final refresher = await newRefresher();
+
+        // Seed retained: svc-1 declaration disappears.
+        writeManifest(
+          'v2',
+          manifest(
+            services: [
+              {'id': 'svc-2', 'name': '服务二'},
+            ],
+          ),
+        );
+        await refresher.refresh('proj-a');
+        // Seed invalid: the manifest becomes unreadable.
+        File(path).deleteSync();
+        await refresher.refresh('proj-a');
+        // Seed invalid for the other project too.
+        File(other).deleteSync();
+        await refresher.refresh('proj-b');
+
+        expect(refresher.invalidReason('proj-a'), isNotNull);
+        expect(refresher.retainedServices('proj-a'), hasLength(1));
+
+        await refresher.purge('proj-a');
+
+        expect(refresher.invalidReason('proj-a'), isNull);
+        expect(refresher.retainedServices('proj-a'), isEmpty);
+        // Other projects are untouched.
+        expect(refresher.invalidReason('proj-b'), isNotNull);
+
+        // Persisted: a fresh refresher no longer sees the purged state.
+        final again = await newRefresher();
+        expect(again.invalidReason('proj-a'), isNull);
+        expect(again.retainedServices('proj-a'), isEmpty);
+        expect(again.invalidReason('proj-b'), isNotNull);
+      },
+    );
+
+    test('purging a project without state is a no-op', () async {
+      final path = writeManifest('v1', manifest());
+      await bind(path);
+      final refresher = await newRefresher();
+
+      await refresher.purge('proj-a');
+      await refresher.purge('ghost');
+
+      expect(File(statePath).existsSync(), isFalse);
+      expect(store.byProjectId('proj-a'), isNotNull);
+    });
+  });
+
+  group('removeRetained', () {
+    test('drops one retained record and keeps the rest, persisted', () async {
+      final path = writeManifest('v1', manifest());
+      await bind(path);
+      final refresher = await newRefresher();
+
+      writeManifest('v2', manifest(services: const []));
+      await refresher.refresh('proj-a');
+      expect(refresher.retainedServices('proj-a'), hasLength(2));
+
+      await refresher.removeRetained('proj-a', 'svc-1');
+
+      final retained = refresher.retainedServices('proj-a');
+      expect(retained.single.id, 'svc-2');
+
+      // Persisted: a fresh refresher sees the same remaining record.
+      final again = await newRefresher();
+      expect(again.retainedServices('proj-a').single.id, 'svc-2');
+    });
+
+    test('removing an unknown retained record is a no-op', () async {
+      final path = writeManifest('v1', manifest());
+      await bind(path);
+      final refresher = await newRefresher();
+
+      writeManifest('v2', manifest(services: const []));
+      await refresher.refresh('proj-a');
+
+      await refresher.removeRetained('proj-a', 'ghost');
+      await refresher.removeRetained('ghost', 'svc-1');
+
+      expect(refresher.retainedServices('proj-a'), hasLength(2));
+    });
+  });
+
   group('refreshAll', () {
     test('covers every binding and reports per project', () async {
       final pathA = writeManifest('a1', manifest(), projectDir: 'proj');
@@ -296,6 +393,104 @@ void main() {
     test('unknown project reports not-bound', () async {
       final refresher = await newRefresher();
       expect(await refresher.refresh('ghost'), isA<RefreshNotBound>());
+    });
+  });
+  group('corrupted storage', () {
+    test('malformed JSON is backed up and the state starts empty', () async {
+      File(statePath).writeAsStringSync('not json');
+
+      final refresher = await newRefresher();
+
+      expect(refresher.invalidReason('proj-a'), isNull);
+      expect(refresher.retainedServices('proj-a'), isEmpty);
+      final report = refresher.corruptionReport;
+      expect(report, isNotNull);
+      expect(report!.filePath, statePath);
+      expect(report.skippedRecords, 0);
+      expect(File(statePath).existsSync(), isFalse);
+      expect(report.backupPath, isNotNull);
+      expect(report.backupPath, contains('.corrupt-'));
+      expect(File(report.backupPath!).readAsStringSync(), 'not json');
+    });
+
+    test(
+      'a non-map top level is backed up and the state starts empty',
+      () async {
+        File(statePath).writeAsStringSync('[{"invalid": {}}]');
+
+        final refresher = await newRefresher();
+
+        expect(refresher.corruptionReport, isNotNull);
+        expect(refresher.corruptionReport!.backupPath, isNotNull);
+        expect(File(statePath).existsSync(), isFalse);
+        expect(
+          File(refresher.corruptionReport!.backupPath!).readAsStringSync(),
+          '[{"invalid": {}}]',
+        );
+      },
+    );
+
+    test(
+      'a section container of the wrong type is skipped, not fatal',
+      () async {
+        // Hand-editing can turn a whole section into an array or scalar;
+        // loading must survive that the same way it survives a bad record
+        // (#42: loading never throws for damaged content).
+        File(statePath).writeAsStringSync(
+          const JsonEncoder.withIndent('  ').convert({
+            'invalid': ['not', 'a', 'map'],
+            'retained': 'not a map either',
+          }),
+        );
+
+        final refresher = await newRefresher();
+
+        expect(refresher.invalidReason('proj-a'), isNull);
+        expect(refresher.retainedServices('proj-a'), isEmpty);
+        expect(File(statePath).existsSync(), isTrue);
+        final report = refresher.corruptionReport;
+        expect(report, isNotNull);
+        expect(report!.filePath, statePath);
+        expect(report.backupPath, isNull);
+        expect(report.skippedRecords, 2);
+      },
+    );
+
+    test('invalid entries are skipped while good entries are kept', () async {
+      File(statePath).writeAsStringSync(
+        const JsonEncoder.withIndent('  ').convert({
+          'invalid': {
+            'proj-good': {
+              'reason': 'invalidStructure',
+              'detail': 'broken edit',
+            },
+            'proj-bad': 'not a record',
+          },
+          'retained': {
+            'proj-good': [
+              {'id': 'svc-1', 'name': '服务一', 'removedAt': 'bad date'},
+              'not a retained record',
+            ],
+            'proj-bad': 'not a list',
+          },
+        }),
+      );
+
+      final refresher = await newRefresher();
+
+      expect(refresher.invalidReason('proj-good'), isNotNull);
+      expect(refresher.invalidReason('proj-good')!.detail, 'broken edit');
+      expect(refresher.invalidReason('proj-bad'), isNull);
+      final retained = refresher.retainedServices('proj-good');
+      expect(retained, hasLength(1));
+      expect(retained.single.id, 'svc-1');
+      expect(refresher.retainedServices('proj-bad'), isEmpty);
+      expect(File(statePath).existsSync(), isTrue);
+      final report = refresher.corruptionReport;
+      expect(report, isNotNull);
+      expect(report!.filePath, statePath);
+      expect(report.backupPath, isNull);
+      expect(report.skippedRecords, 3);
     });
   });
 }

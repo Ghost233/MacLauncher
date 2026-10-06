@@ -63,6 +63,7 @@ Future<void> main() async {
   LauncherServer? server;
   ServiceOperations? operations;
   EntryHandoffCoordinator? handoff;
+  UnbindFlow? unbindFlow;
   Object? error;
   try {
     server = await LauncherServer.start(layout: layout, bindings: bindings);
@@ -88,6 +89,13 @@ Future<void> main() async {
       },
     );
     await refresher.refreshAll();
+    unbindFlow = UnbindFlow(
+      bindings: bindings,
+      preferences: prefs,
+      refresher: refresher,
+      handoff: handoff,
+      server: server,
+    );
     await AutostartNotifier(preferences: prefs)
         .runOnce(bindings: bindings, startService: operations.start);
   } catch (e) {
@@ -103,6 +111,14 @@ Future<void> main() async {
     relauncher: _relaunchViaNativeChannel,
   );
 
+  // Damage found while loading the three local stores, aggregated so the
+  // page can surface one startup notice (#42).
+  final corruptionReports = [
+    bindings.corruptionReport,
+    prefs.corruptionReport,
+    refresher.corruptionReport,
+  ].whereType<StorageCorruptionReport>().toList();
+
   runApp(
     MacLauncherApp(
       server: server,
@@ -112,8 +128,10 @@ Future<void> main() async {
       refresher: refresher,
       operations: operations,
       handoff: handoff,
+      unbindFlow: unbindFlow,
       updateService: AppUpdateService(layout: layout),
       selfUpdateFlow: selfUpdateFlow,
+      corruptionReports: corruptionReports,
     ),
   );
 }
@@ -128,8 +146,10 @@ class MacLauncherApp extends StatelessWidget {
     this.serverError,
     this.operations,
     this.handoff,
+    this.unbindFlow,
     this.updateService,
     this.selfUpdateFlow,
+    this.corruptionReports = const [],
   });
 
   final LauncherServer? server;
@@ -139,8 +159,12 @@ class MacLauncherApp extends StatelessWidget {
   final ConfigRefresher refresher;
   final ServiceOperations? operations;
   final EntryHandoffCoordinator? handoff;
+  final UnbindFlow? unbindFlow;
   final AppUpdateService? updateService;
   final SelfUpdateFlow? selfUpdateFlow;
+
+  /// Damage found while loading the local stores; surfaced once at startup.
+  final List<StorageCorruptionReport> corruptionReports;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -155,8 +179,10 @@ class MacLauncherApp extends StatelessWidget {
       refresher: refresher,
       operations: operations,
       handoff: handoff,
+      unbindFlow: unbindFlow,
       updateService: updateService,
       selfUpdateFlow: selfUpdateFlow,
+      corruptionReports: corruptionReports,
     ),
   );
 }
@@ -173,8 +199,10 @@ class ManagementPage extends StatefulWidget {
     this.serverError,
     this.operations,
     this.handoff,
+    this.unbindFlow,
     this.updateService,
     this.selfUpdateFlow,
+    this.corruptionReports = const [],
   });
 
   final LauncherServer? server;
@@ -184,8 +212,10 @@ class ManagementPage extends StatefulWidget {
   final ConfigRefresher refresher;
   final ServiceOperations? operations;
   final EntryHandoffCoordinator? handoff;
+  final UnbindFlow? unbindFlow;
   final AppUpdateService? updateService;
   final SelfUpdateFlow? selfUpdateFlow;
+  final List<StorageCorruptionReport> corruptionReports;
 
   @override
   State<ManagementPage> createState() => _ManagementPageState();
@@ -198,10 +228,20 @@ class _ManagementPageState extends State<ManagementPage> {
   StreamSubscription<HandoffState>? _handoffSub;
   final Map<String, EntryHandoffStatus> _handoffStatus = {};
   String _loginItemStatus = 'unknown';
+  bool _corruptionNoticeShown = false;
 
   @override
   void initState() {
     super.initState();
+    // One aggregated notice per launch for damaged local storage (#42).
+    if (widget.corruptionReports.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_corruptionNoticeShown) {
+          _corruptionNoticeShown = true;
+          _showCorruptionNotice();
+        }
+      });
+    }
     _registrySub = widget.server?.registry.changes.listen((_) {
       if (mounted) setState(() {});
     });
@@ -253,6 +293,26 @@ class _ManagementPageState extends State<ManagementPage> {
       _handoffStatus[projectId] ??
       widget.handoff?.statusOf(projectId) ??
       EntryHandoffStatus.unmanaged;
+
+  void _showCorruptionNotice() {
+    final lines = [
+      '检测到本机存储文件损坏，已按以下方式恢复：',
+      for (final report in widget.corruptionReports) ...[
+        if (report.backupPath != null)
+          '· 「${_basename(report.filePath)}」已损坏，原文件已备份为'
+              '「${_basename(report.backupPath!)}」，按空集合启动。',
+        if (report.skippedRecords > 0)
+          '· 「${_basename(report.filePath)}」有 ${report.skippedRecords} '
+              '条无效记录，已跳过并保留其余记录。',
+      ],
+    ].join('\n');
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(lines), duration: const Duration(seconds: 5)),
+    );
+  }
+
+  static String _basename(String path) =>
+      path.replaceAll('\\', '/').split('/').last;
 
   Future<void> _loadLoginItemStatus() async {
     try {
@@ -314,23 +374,66 @@ class _ManagementPageState extends State<ManagementPage> {
     }
   }
 
+  /// Repair-oriented entry on an invalid card (issue #43): the user picks
+  /// the project's configuration again. Conflicts surface with recovery
+  /// wording instead of association-conflict wording.
+  Future<void> _reselectConfig(String projectId) async {
+    String? path;
+    try {
+      path = await _native.invokeMethod<String>('pickManifest');
+    } catch (_) {
+      return;
+    }
+    if (path == null || !mounted) return;
+    try {
+      final flow = AssociationFlow(widget.bindings);
+      final result = await flow.associate(path);
+      if (!mounted) return;
+      switch (result) {
+        case AssociationCreated():
+          setState(() {});
+        case AssociationReused():
+          _toast('该配置已关联，复用原记录。');
+        case AssociationConflict():
+          await _resolveConflict(flow, result, repair: true);
+      }
+      // Whatever the user picked, re-check the invalid project so a
+      // successful repair recovers the card immediately.
+      if (mounted) await _refreshConfig(projectId);
+    } on ManifestException catch (e) {
+      if (!mounted) return;
+      await _alert('无法找回项目配置', '具体原因：${e.reason}\n${e.detail}');
+    }
+  }
+
   Future<void> _resolveConflict(
     AssociationFlow flow,
-    AssociationConflict conflict,
-  ) async {
+    AssociationConflict conflict, {
+    bool repair = false,
+  }) async {
     final existing = conflict.existingBinding;
+    // 「作为新项目」的效果只有语境差别：修复语境指向失效项目本身，关联
+    // 语境指向进入的配置。
+    final asNewProject = repair ? '作为新项目会为它生成新的项目身份。' : '作为新项目会为进入的配置生成新的项目身份。';
     final message = switch (conflict.kind) {
       AssociationConflictKind.identityBoundToOtherPath =>
-        '相同的项目身份已在另一路径绑定：\n${existing.manifestPath}\n\n'
-            '迁移会把原绑定（含偏好）移到新路径；作为新项目会为进入的配置生成新的项目身份。',
+        repair
+            ? '这份配置与失效的项目是同一身份（原路径：\n${existing.manifestPath}\n）。\n\n'
+                  '迁移原绑定会把绑定（含偏好）移到新路径，找回配置；'
+                  '$asNewProject'
+            : '相同的项目身份已在另一路径绑定：\n${existing.manifestPath}\n\n'
+                  '迁移会把原绑定（含偏好）移到新路径；$asNewProject',
       AssociationConflictKind.pathBoundToOtherIdentity =>
-        '该路径已绑定到另一个项目身份：\n${existing.projectId}\n\n'
-            '迁移会把绑定更新为进入配置的身份；作为新项目会为进入的配置生成新的项目身份。',
+        repair
+            ? '该路径已绑定到另一个项目身份：\n${existing.projectId}\n\n'
+                  '所选配置无法用于找回失效的项目；$asNewProject'
+            : '该路径已绑定到另一个项目身份：\n${existing.projectId}\n\n'
+                  '迁移会把绑定更新为进入配置的身份；$asNewProject',
     };
     final choice = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('项目身份冲突'),
+        title: Text(repair ? '找回项目配置' : '项目身份冲突'),
         content: Text(message),
         actions: [
           TextButton(
@@ -382,9 +485,107 @@ class _ManagementPageState extends State<ManagementPage> {
     }
   }
 
+  /// retained 只读记录的逐条清除：持久化编排在页面层（E05 界面边界），
+  /// 落盘失败给出提示而不是成为未捕获异常。
+  Future<void> _clearRetained(String projectId, String serviceId) async {
+    try {
+      await widget.refresher.removeRetained(projectId, serviceId);
+    } catch (e) {
+      if (!mounted) return;
+      await _alert('清除保留记录失败', '$e');
+      return;
+    }
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  /// 解除绑定：确认对话框只有一个动作——「保留运行并解除绑定」。
+  /// 固定说明文案 + 动态影响摘要（docs/design.md 锚点）；取消后一切不变。
+  Future<void> _unbind(ProjectBinding binding) async {
+    final flow = widget.unbindFlow;
+    if (flow == null) return;
+    final preferenceCount = widget.preferences
+        .enabledServices(binding.projectId)
+        .length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('解除项目绑定'),
+        content: Text(
+          '取消该项目的登录启动通知，归还原菜单栏入口。\n'
+          '应用已有业务和日志继续由它自己维护。\n\n'
+          '将清除 $preferenceCount 项登录启动偏好。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppTheme.danger,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('保留运行并解除绑定'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    try {
+      await flow.unbind(binding.projectId);
+      if (!mounted) return;
+      setState(() => _handoffStatus.remove(binding.projectId));
+      _toast('已解除绑定。');
+    } catch (e) {
+      if (!mounted) return;
+      await _alert('解除绑定失败', '$e');
+    }
+  }
+
   void _toast(String message) {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// The invalid-config explainer appears once ever (flag persisted in the
+  /// preference store) plus at most once per page state, so rebuilds and
+  /// refreshes never nag (issue #43).
+  bool _invalidGuidanceShown = false;
+
+  void _maybeShowInvalidGuidance() {
+    if (_invalidGuidanceShown || widget.preferences.invalidConfigGuidanceSeen) {
+      return;
+    }
+    final hasInvalid = widget.bindings.bindings.any(
+      (b) => widget.refresher.invalidReason(b.projectId) != null,
+    );
+    if (!hasInvalid) return;
+    _invalidGuidanceShown = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('配置失效说明'),
+          content: const Text(
+            '配置失效指绑定记录中的配置文件缺失、不可读或内容不再合法'
+            '（例如项目目录被移动、重命名或删除）。\n\n'
+            '失效只暂停新的启动与通知：绑定、登录启动偏好与运行记录都会保留，'
+            '数据不会丢。你可以重新选择配置完成修复，或解除绑定放弃。\n\n'
+            '此说明只出现一次。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('知道了'),
+            ),
+          ],
+        ),
+      );
+      await widget.preferences.markInvalidConfigGuidanceSeen();
+    });
   }
 
   void _openSettings() {
@@ -419,6 +620,7 @@ class _ManagementPageState extends State<ManagementPage> {
   Widget build(BuildContext context) {
     final registry = widget.server?.registry;
     final bindings = widget.bindings.bindings;
+    _maybeShowInvalidGuidance();
     return Scaffold(
       appBar: AppBar(
         title: const Text('MacLauncher 管理'),
@@ -531,6 +733,13 @@ class _ManagementPageState extends State<ManagementPage> {
                           },
                           onRefreshConfig: () =>
                               _refreshConfig(binding.projectId),
+                          onReselectConfig: () =>
+                              _reselectConfig(binding.projectId),
+                          onUnbind: widget.unbindFlow == null
+                              ? null
+                              : () => _unbind(binding),
+                          onClearRetained: (serviceId) =>
+                              _clearRetained(binding.projectId, serviceId),
                           onChanged: () => setState(() {}),
                         ),
                       ),
