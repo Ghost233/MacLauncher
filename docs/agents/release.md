@@ -14,9 +14,9 @@ scripts/release.sh             # 确认无误后真实执行
 ## 脚本行为
 
 1. 从 `launcher/pubspec.yaml` 读取 `version`（版本唯一来源）。
-2. patch 进位 +0.0.1；build 号（`+N`）重置为 1——它是单个语义版本内的构建计数，新语义版本从 1 重新计。pubspec 本不带 build 号时新版本也不带。
+2. patch 加 1；达到 10 时 patch 归零、minor 加 1，例如 `1.0.6 → 1.0.7`、`1.0.9 → 1.1.0`。新版本统一使用三段式 `X.Y.Z`；历史 `+N` 后缀只用于读取当前版本，不延续到新版本，例如 `1.0.6+1 → 1.0.7`。
 3. 写回 pubspec，提交（仅此文件），推送 `main`。推送 `main` 会同时触发 rolling `latest` 预发布管线，属预期行为。
-4. 打附注 tag `vX.Y.Z+N` 并推送。tag 必须与 pubspec version **精确一致（含 build 号）**，否则 release.yml 的 validate-tag 步骤失败——所以 tag 带 `+N`，不是裸 `vX.Y.Z`。
+4. 打附注 tag `vX.Y.Z` 并推送。tag 去掉 `v` 后必须与写回的 pubspec version **精确一致**，否则 release.yml 的 validate-tag 步骤失败。
 
 每步失败即停；脚本中止时错误消息内含恢复命令，先读消息再动手。
 
@@ -25,10 +25,12 @@ scripts/release.sh             # 确认无误后真实执行
 | 失败点 | 状态 | 恢复 |
 | --- | --- | --- |
 | 前置检查 | 无任何改动 | 按提示解决（切 main / 提交改动 / 同步远端）后重跑 |
-| push main | 版本提交仅在本地，本地领先远端 | `git push origin main`，然后手工 `git tag -a vX.Y.Z+N <commit>` 与 `git push origin vX.Y.Z+N`；直接重跑会被同步检查拦下 |
-| push tag | main 已推送，tag 仅在本地 | `git push origin vX.Y.Z+N`（重跑脚本会被「部分失败」检查拦下并给出同一命令） |
+| push main | 版本提交仅在本地，本地领先远端 | `git push origin main`，然后手工 `git tag -a vX.Y.Z <commit>` 与 `git push origin vX.Y.Z`；直接重跑会被同步检查拦下 |
+| push tag | main 已推送，tag 仅在本地 | `git push origin vX.Y.Z`（重跑脚本会被「部分失败」检查拦下并给出同一命令） |
 
-`vX.Y.Z+N` 以脚本中止前打印的「发布 tag」为准。
+`vX.Y.Z` 以脚本中止前打印的「发布 tag」为准；恢复历史发布失败时，同样使用当时打印的完整 tag。
+
+版本规则与 dry-run 无副作用检查：`python3 scripts/test_release.py`。测试使用临时本地 Git 仓库和本地裸仓库，不访问 GitHub。
 
 ## 发版后验证
 

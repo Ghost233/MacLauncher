@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # release.sh — Ghost Launcher 标准发版（issue #28）
 #
-# 流程：读 launcher/pubspec.yaml 版本 → patch +0.0.1（build 号重置为 1）→
-# 写回并提交（仅 pubspec.yaml）→ push origin main → 打 vX.Y.Z+N tag → push tag。
+# 流程：读 launcher/pubspec.yaml 版本 → patch +1，满 10 向 minor 进位 →
+# 写回三段版本并提交（仅 pubspec.yaml）→ push origin main → 打 vX.Y.Z tag → push tag。
 # tag 触发 .github/workflows/release.yml，该管线要求 tag 去掉 v 前缀后与
-# pubspec version 精确一致（含 build 号），因此 tag 带上 +N。
+# pubspec version 精确一致；历史 +N 后缀不延续到新版本。
 #
 # 用法：
 #   scripts/release.sh            真实执行（必须在 main、工作树干净、与 origin/main 同步）
@@ -76,8 +76,6 @@ current="$(awk '/^version:/{print $2; exit}' "$PUBSPEC")"
 [ -n "$current" ] || die "无法从 $PUBSPEC 读取 version 字段"
 
 semver="${current%%+*}"
-build="${current#"$semver"}"          # 无 + 时为空串，有 + 时为 "+N"
-[ "$build" = "$current" ] && build="" # semver 中本就没有 + 的情况
 
 core_major="${semver%%.*}"
 rest="${semver#*.}"
@@ -89,13 +87,11 @@ esac
 [ "$semver" = "$core_major.$core_minor.$core_patch" ] || die "版本号 '$current' 不是 x.y.z(+N) 格式"
 
 new_patch=$((core_patch + 1))
-# build 号选择：patch 进位后重置为 1。build 号是单个语义版本内的构建计数，
-# 新语义版本从 1 重新计；release.yml 要求 tag 与 pubspec 精确一致，故 tag 含 +1。
-if [ -n "$build" ]; then
-  new_version="$core_major.$core_minor.$new_patch+1"
-else
-  new_version="$core_major.$core_minor.$new_patch"
+if [ "$new_patch" -ge 10 ]; then
+  core_minor=$((core_minor + 1))
+  new_patch=0
 fi
+new_version="$core_major.$core_minor.$new_patch"
 tag="v$new_version"
 
 info "当前版本: $current"

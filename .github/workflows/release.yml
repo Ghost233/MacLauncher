@@ -5,8 +5,8 @@ name: Release
 # 2. 调用可复用管线构建并打包 DMG；
 # 3. 创建正式 Release，上传 DMG 与 SHA256SUMS 清单。
 #
-# 注意：tag 必须与 pubspec version 精确一致，pubspec 含构建号时 tag 也要带上，
-# 例如 version: 1.0.0+1 对应 tag v1.0.0+1。
+# 注意：tag 必须与 pubspec version 精确一致；发布脚本写回三段版本，
+# 例如 version: 1.0.7 对应 tag v1.0.7。历史带构建号的 tag 仍按完整版本校验。
 
 on:
   push:
