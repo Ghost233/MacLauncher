@@ -1,2 +1,2 @@
-# GhostLauncher
-GhostLauncher
+# Ghost Launcher
+Ghost Launcher

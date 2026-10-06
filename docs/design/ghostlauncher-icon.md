@@ -1,4 +1,4 @@
-# GhostLauncher 图标
+# Ghost Launcher 图标
 
 使用内置 imagegen 生成，参考 `/Applications/Ghost Nexus.app/Contents/Resources/AppIcon.icns`。圆角图标外部保留透明通道，使用系统 `sips` 缩放为 macOS 的 16、32、64、128、256、512、1024 像素尺寸。
 

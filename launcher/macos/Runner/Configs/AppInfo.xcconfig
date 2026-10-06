@@ -5,7 +5,7 @@
 // 'flutter create' template.
 
 // The application's name. By default this is also the title of the Flutter window.
-PRODUCT_NAME = GhostLauncher
+PRODUCT_NAME = Ghost Launcher
 
 // The application's bundle identifier
 PRODUCT_BUNDLE_IDENTIFIER = dev.ghost233.maclauncher

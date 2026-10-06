@@ -24,7 +24,7 @@ jobs:
     permissions:
       contents: read
     env:
-      APP_NAME: GhostLauncher
+      APP_NAME: Ghost Launcher
       FLUTTER_VERSION: "3.47.6"
     steps:
       - name: Checkout
@@ -53,12 +53,12 @@ jobs:
           set -euo pipefail
           app="launcher/build/macos/Build/Products/Release/${APP_NAME}.app"
           test -d "$app" || { echo "::error::Build product not found: $app"; exit 1; }
-          dmg="GhostLauncher-${{ inputs.version }}.dmg"
+          dmg="Ghost Launcher-${{ inputs.version }}.dmg"
           mkdir -p dist staging
           cp -R "$app" staging/
           ln -s /Applications staging/Applications
           hdiutil create \
-            -volname "GhostLauncher" \
+            -volname "Ghost Launcher" \
             -srcfolder staging \
             -ov -format UDZO \
             "dist/${dmg}"

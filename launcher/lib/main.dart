@@ -168,7 +168,7 @@ class MacLauncherApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'GhostLauncher',
+    title: 'Ghost Launcher',
     debugShowCheckedModeBanner: false,
     theme: AppTheme.material(),
     home: ManagementPage(
@@ -623,7 +623,7 @@ class _ManagementPageState extends State<ManagementPage> {
     _maybeShowInvalidGuidance();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('GhostLauncher 管理'),
+        title: const Text('Ghost Launcher 管理'),
         actions: [
           _LoginItemButton(
             label: _loginItemLabel,
