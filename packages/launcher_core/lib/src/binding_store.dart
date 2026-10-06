@@ -68,18 +68,17 @@ class BindingStore implements BindingLookup {
     if (!file.existsSync()) {
       return BindingStore._(file, [], null);
     }
-    final Object? decoded;
-    try {
-      decoded = jsonDecode(await file.readAsString());
-    } on FormatException {
-      return BindingStore._(file, [], await _wholeFileCorruption(file));
-    }
-    if (decoded is! List) {
-      return BindingStore._(file, [], await _wholeFileCorruption(file));
+    final decode = await decodeStoreFile(
+      file,
+      isValidTopLevel: (decoded) => decoded is List,
+    );
+    final wholeFileDamage = decode.wholeFileDamage;
+    if (wholeFileDamage != null) {
+      return BindingStore._(file, [], wholeFileDamage);
     }
     final bindings = <ProjectBinding>[];
     var skipped = 0;
-    for (final element in decoded) {
+    for (final element in decode.decoded! as List) {
       final binding = _tryParseBinding(element);
       if (binding == null) {
         skipped++;
@@ -87,26 +86,8 @@ class BindingStore implements BindingLookup {
         bindings.add(binding);
       }
     }
-    return BindingStore._(
-      file,
-      bindings,
-      skipped > 0
-          ? StorageCorruptionReport(
-              filePath: file.path,
-              backupPath: null,
-              skippedRecords: skipped,
-            )
-          : null,
-    );
+    return BindingStore._(file, bindings, skippedRecordsReport(file, skipped));
   }
-
-  static Future<StorageCorruptionReport> _wholeFileCorruption(
-    File file,
-  ) async => StorageCorruptionReport(
-    filePath: file.path,
-    backupPath: await backupCorruptedFile(file),
-    skippedRecords: 0,
-  );
 
   /// A record is usable only when it parses and carries a project identity
   /// plus a manifest path; anything less is damage, not a binding.

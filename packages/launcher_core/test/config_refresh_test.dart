@@ -430,6 +430,32 @@ void main() {
       },
     );
 
+    test(
+      'a section container of the wrong type is skipped, not fatal',
+      () async {
+        // Hand-editing can turn a whole section into an array or scalar;
+        // loading must survive that the same way it survives a bad record
+        // (#42: loading never throws for damaged content).
+        File(statePath).writeAsStringSync(
+          const JsonEncoder.withIndent('  ').convert({
+            'invalid': ['not', 'a', 'map'],
+            'retained': 'not a map either',
+          }),
+        );
+
+        final refresher = await newRefresher();
+
+        expect(refresher.invalidReason('proj-a'), isNull);
+        expect(refresher.retainedServices('proj-a'), isEmpty);
+        expect(File(statePath).existsSync(), isTrue);
+        final report = refresher.corruptionReport;
+        expect(report, isNotNull);
+        expect(report!.filePath, statePath);
+        expect(report.backupPath, isNull);
+        expect(report.skippedRecords, 2);
+      },
+    );
+
     test('invalid entries are skipped while good entries are kept', () async {
       File(statePath).writeAsStringSync(
         const JsonEncoder.withIndent('  ').convert({

@@ -21,6 +21,7 @@ class ProjectCard extends StatelessWidget {
     required this.onRefreshConfig,
     required this.onReselectConfig,
     required this.onChanged,
+    this.onClearRetained,
     this.onUnbind,
     this.registry,
     this.operations,
@@ -42,6 +43,10 @@ class ProjectCard extends StatelessWidget {
   final VoidCallback onReselectConfig;
 
   final VoidCallback onChanged;
+
+  /// retained 只读记录的逐条清除入口；持久化编排（含失败提示）在页面层，
+  /// 卡片只上抛意图（E05 界面边界）。
+  final void Function(String serviceId)? onClearRetained;
 
   /// 解除绑定入口；为 null（启动器未就绪）时不显示。失效态引导框中的
   /// 「解除绑定…」共用此回调（issue #43），此时入口置灰并注明原因。
@@ -253,13 +258,9 @@ class ProjectCard extends StatelessWidget {
                       ),
                     ),
                     TextButton(
-                      onPressed: () async {
-                        await refresher.removeRetained(
-                          binding.projectId,
-                          service.id,
-                        );
-                        onChanged();
-                      },
+                      onPressed: onClearRetained == null
+                          ? null
+                          : () => onClearRetained!(service.id),
                       style: TextButton.styleFrom(
                         foregroundColor: AppTheme.neutral,
                         textStyle: const TextStyle(fontSize: 12.5),

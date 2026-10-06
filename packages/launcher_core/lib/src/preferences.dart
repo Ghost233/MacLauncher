@@ -56,32 +56,20 @@ class PreferenceStore {
   static Future<PreferenceStore> load(String filePath) async {
     final file = File(filePath);
     if (!file.existsSync()) return PreferenceStore._(file, {}, {}, {}, null);
-    final Object? decoded;
-    try {
-      decoded = jsonDecode(await file.readAsString());
-    } on FormatException {
-      return PreferenceStore._(
-        file,
-        {},
-        {},
-        {},
-        await _wholeFileCorruption(file),
-      );
-    }
-    if (decoded is! Map) {
-      return PreferenceStore._(
-        file,
-        {},
-        {},
-        {},
-        await _wholeFileCorruption(file),
-      );
+    final decode = await decodeStoreFile(
+      file,
+      isValidTopLevel: (decoded) => decoded is Map,
+    );
+    final wholeFileDamage = decode.wholeFileDamage;
+    if (wholeFileDamage != null) {
+      return PreferenceStore._(file, {}, {}, {}, wholeFileDamage);
     }
     final prefs = <String, Map<String, bool>>{};
     final updatePrefs = <String, bool>{};
     final guidance = <String, bool>{};
     var skipped = 0;
-    for (final entry in decoded.cast<String, Object?>().entries) {
+    for (final entry
+        in (decode.decoded! as Map).cast<String, Object?>().entries) {
       if (entry.value is! Map) {
         skipped++;
         continue;
@@ -105,23 +93,9 @@ class PreferenceStore {
       prefs,
       updatePrefs,
       guidance,
-      skipped > 0
-          ? StorageCorruptionReport(
-              filePath: file.path,
-              backupPath: null,
-              skippedRecords: skipped,
-            )
-          : null,
+      skippedRecordsReport(file, skipped),
     );
   }
-
-  static Future<StorageCorruptionReport> _wholeFileCorruption(
-    File file,
-  ) async => StorageCorruptionReport(
-    filePath: file.path,
-    backupPath: await backupCorruptedFile(file),
-    skippedRecords: 0,
-  );
 
   bool isLoginStartEnabled(String projectId, String serviceId) =>
       _prefs[projectId]?[serviceId] ?? false;

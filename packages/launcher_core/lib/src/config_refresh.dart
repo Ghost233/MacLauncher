@@ -143,67 +143,64 @@ class ConfigRefresher {
     final retained = <String, List<RetainedService>>{};
     StorageCorruptionReport? report;
     if (file.existsSync()) {
-      Object? decoded;
-      try {
-        decoded = jsonDecode(await file.readAsString());
-      } on FormatException {
-        decoded = null;
-      }
-      if (decoded is! Map) {
-        report = StorageCorruptionReport(
-          filePath: file.path,
-          backupPath: file.existsSync()
-              ? await backupCorruptedFile(file)
-              : null,
-          skippedRecords: 0,
-        );
+      final decode = await decodeStoreFile(
+        file,
+        isValidTopLevel: (decoded) => decoded is Map,
+      );
+      final wholeFileDamage = decode.wholeFileDamage;
+      if (wholeFileDamage != null) {
+        report = wholeFileDamage;
       } else {
         var skipped = 0;
-        final map = decoded.cast<String, Object?>();
-        for (final entry
-            in (map['invalid'] as Map? ?? {}).cast<String, Object?>().entries) {
-          if (entry.value is! Map) {
-            skipped++;
-            continue;
-          }
-          final value = (entry.value! as Map).cast<String, Object?>();
-          invalid[entry.key] = RefreshInvalid(
-            ManifestRejection.values.asNameMap()[value['reason']] ??
-                ManifestRejection.invalidStructure,
-            value['detail'] as String? ?? '',
-          );
+        final map = (decode.decoded! as Map).cast<String, Object?>();
+        // A section container of the wrong type (e.g. a hand-edited array)
+        // is skipped like a bad record: it never aborts the load.
+        final invalidSection = map['invalid'];
+        if (invalidSection != null && invalidSection is! Map) {
+          skipped++;
         }
-        for (final entry
-            in (map['retained'] as Map? ?? {})
-                .cast<String, Object?>()
-                .entries) {
-          if (entry.value is! List) {
-            skipped++;
-            continue;
-          }
-          final services = <RetainedService>[];
-          for (final element in entry.value! as List) {
-            if (element is! Map) {
+        if (invalidSection is Map) {
+          for (final entry in invalidSection.cast<String, Object?>().entries) {
+            if (entry.value is! Map) {
               skipped++;
               continue;
             }
-            try {
-              services.add(
-                RetainedService.fromJson(element.cast<String, Object?>()),
-              );
-            } catch (_) {
-              skipped++;
-            }
+            final value = (entry.value! as Map).cast<String, Object?>();
+            invalid[entry.key] = RefreshInvalid(
+              ManifestRejection.values.asNameMap()[value['reason']] ??
+                  ManifestRejection.invalidStructure,
+              value['detail'] as String? ?? '',
+            );
           }
-          if (services.isNotEmpty) retained[entry.key] = services;
         }
-        if (skipped > 0) {
-          report = StorageCorruptionReport(
-            filePath: file.path,
-            backupPath: null,
-            skippedRecords: skipped,
-          );
+        final retainedSection = map['retained'];
+        if (retainedSection != null && retainedSection is! Map) {
+          skipped++;
         }
+        if (retainedSection is Map) {
+          for (final entry in retainedSection.cast<String, Object?>().entries) {
+            if (entry.value is! List) {
+              skipped++;
+              continue;
+            }
+            final services = <RetainedService>[];
+            for (final element in entry.value! as List) {
+              if (element is! Map) {
+                skipped++;
+                continue;
+              }
+              try {
+                services.add(
+                  RetainedService.fromJson(element.cast<String, Object?>()),
+                );
+              } catch (_) {
+                skipped++;
+              }
+            }
+            if (services.isNotEmpty) retained[entry.key] = services;
+          }
+        }
+        report = skippedRecordsReport(file, skipped);
       }
     }
     return ConfigRefresher._(

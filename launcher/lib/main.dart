@@ -412,21 +412,23 @@ class _ManagementPageState extends State<ManagementPage> {
     bool repair = false,
   }) async {
     final existing = conflict.existingBinding;
+    // 「作为新项目」的效果只有语境差别：修复语境指向失效项目本身，关联
+    // 语境指向进入的配置。
+    final asNewProject = repair ? '作为新项目会为它生成新的项目身份。' : '作为新项目会为进入的配置生成新的项目身份。';
     final message = switch (conflict.kind) {
       AssociationConflictKind.identityBoundToOtherPath =>
         repair
             ? '这份配置与失效的项目是同一身份（原路径：\n${existing.manifestPath}\n）。\n\n'
                   '迁移原绑定会把绑定（含偏好）移到新路径，找回配置；'
-                  '作为新项目会为它生成新的项目身份。'
+                  '$asNewProject'
             : '相同的项目身份已在另一路径绑定：\n${existing.manifestPath}\n\n'
-                  '迁移会把原绑定（含偏好）移到新路径；作为新项目会为进入的配置生成新的项目身份。',
+                  '迁移会把原绑定（含偏好）移到新路径；$asNewProject',
       AssociationConflictKind.pathBoundToOtherIdentity =>
         repair
             ? '该路径已绑定到另一个项目身份：\n${existing.projectId}\n\n'
-                  '所选配置无法用于找回失效的项目；'
-                  '作为新项目会为它生成新的项目身份。'
+                  '所选配置无法用于找回失效的项目；$asNewProject'
             : '该路径已绑定到另一个项目身份：\n${existing.projectId}\n\n'
-                  '迁移会把绑定更新为进入配置的身份；作为新项目会为进入的配置生成新的项目身份。',
+                  '迁移会把绑定更新为进入配置的身份；$asNewProject',
     };
     final choice = await showDialog<String>(
       context: context,
@@ -481,6 +483,20 @@ class _ManagementPageState extends State<ManagementPage> {
       case RefreshNotBound():
         _toast('该配置已解除绑定。');
     }
+  }
+
+  /// retained 只读记录的逐条清除：持久化编排在页面层（E05 界面边界），
+  /// 落盘失败给出提示而不是成为未捕获异常。
+  Future<void> _clearRetained(String projectId, String serviceId) async {
+    try {
+      await widget.refresher.removeRetained(projectId, serviceId);
+    } catch (e) {
+      if (!mounted) return;
+      await _alert('清除保留记录失败', '$e');
+      return;
+    }
+    if (!mounted) return;
+    setState(() {});
   }
 
   /// 解除绑定：确认对话框只有一个动作——「保留运行并解除绑定」。
@@ -722,6 +738,8 @@ class _ManagementPageState extends State<ManagementPage> {
                           onUnbind: widget.unbindFlow == null
                               ? null
                               : () => _unbind(binding),
+                          onClearRetained: (serviceId) =>
+                              _clearRetained(binding.projectId, serviceId),
                           onChanged: () => setState(() {}),
                         ),
                       ),

@@ -6,106 +6,7 @@ import 'package:launcher_core/launcher_core.dart';
 import 'package:maclauncher/main.dart';
 import 'package:maclauncher_sdk/maclauncher_sdk.dart';
 
-/// Builds the full launcher graph against a temp endpoint, with a bound
-/// project declaring [services] (id → display name).
-class _Harness {
-  _Harness._();
-
-  late Directory directory;
-  late BindingStore bindings;
-  late PreferenceStore preferences;
-  late ConfigRefresher refresher;
-  late LauncherServer server;
-  late ServiceOperations operations;
-  late EntryHandoffCoordinator handoff;
-  late UnbindFlow unbindFlow;
-
-  static Future<_Harness> create(Map<String, String> services) async {
-    final harness = _Harness._();
-    harness.directory = Directory.systemTemp.createTempSync(
-      'launcher-ui-test-',
-    );
-    final projectDir = Directory('${harness.directory.path}/proj')
-      ..createSync();
-    File('${projectDir.path}/maclauncher.json').writeAsStringSync('''
-{
-  "schemaVersion": 1,
-  "project": {"id": "project-a", "name": "项目甲"},
-  "services": [${services.entries.map((e) => '{"id": "${e.key}", "name": "${e.value}"}').join(',')}]
-}
-''');
-    harness.bindings = await BindingStore.load(
-      '${harness.directory.path}/bindings.json',
-    );
-    await harness.bindings.associate('${projectDir.path}/maclauncher.json');
-    harness.preferences = await PreferenceStore.load(
-      '${harness.directory.path}/preferences.json',
-    );
-    harness.refresher = await ConfigRefresher.load(
-      harness.bindings,
-      '${harness.directory.path}/config_state.json',
-    );
-    harness.server = await LauncherServer.start(
-      layout: EndpointLayout(directory: '${harness.directory.path}/endpoint'),
-      bindings: harness.bindings,
-    );
-    harness.operations = ServiceOperations(
-      server: harness.server,
-      scope: BindingServiceScope(harness.bindings),
-      timeout: const Duration(seconds: 2),
-    );
-    harness.handoff = EntryHandoffCoordinator(
-      server: harness.server,
-      statusQuery: (_) async => true,
-    );
-    harness.unbindFlow = UnbindFlow(
-      bindings: harness.bindings,
-      preferences: harness.preferences,
-      refresher: harness.refresher,
-      handoff: harness.handoff,
-      server: harness.server,
-    );
-    return harness;
-  }
-
-  MacLauncherApp app() => MacLauncherApp(
-    server: server,
-    bindings: bindings,
-    preferences: preferences,
-    refresher: refresher,
-    operations: operations,
-    handoff: handoff,
-    unbindFlow: unbindFlow,
-  );
-
-  Future<MacLauncherSdk> connectSdk(
-    Map<String, ServiceCallbacks> services, {
-    AppCallbacks? app,
-  }) async {
-    final sdk = MacLauncherSdk.connect(
-      projectId: 'project-a',
-      socketPath: server.layout.socketPath,
-      services: services,
-      app: app,
-    );
-    await server.registry.changes.first.timeout(const Duration(seconds: 10));
-    return sdk;
-  }
-
-  Future<void> dispose() async {
-    handoff.dispose();
-    await server.close();
-    directory.deleteSync(recursive: true);
-  }
-}
-
-Future<void> settle(
-  WidgetTester tester, [
-  Duration delay = const Duration(milliseconds: 400),
-]) async {
-  await Future<void>.delayed(delay);
-  await tester.pump();
-}
+import 'launcher_test_harness.dart';
 
 void main() {
   testWidgets('corrupted storage files surface one startup notice, once', (
@@ -188,7 +89,10 @@ void main() {
     tester,
   ) async {
     await tester.runAsync(() async {
-      final harness = await _Harness.create({'read-only': '只读服务'});
+      final harness = await LauncherTestHarness.create(
+        services: {'read-only': '只读服务'},
+        withServer: true,
+      );
       MacLauncherSdk? sdk;
       try {
         await tester.pumpWidget(harness.app());
@@ -220,7 +124,10 @@ void main() {
     'tapping 启动 sends the request; the displayed state comes from the application',
     (tester) async {
       await tester.runAsync(() async {
-        final harness = await _Harness.create({'svc': '受控服务'});
+        final harness = await LauncherTestHarness.create(
+          services: {'svc': '受控服务'},
+          withServer: true,
+        );
         var appState = ServiceState.stopped;
         var startCalls = 0;
         MacLauncherSdk? sdk;
@@ -264,7 +171,10 @@ void main() {
     tester,
   ) async {
     await tester.runAsync(() async {
-      final harness = await _Harness.create({'svc': '日志服务'});
+      final harness = await LauncherTestHarness.create(
+        services: {'svc': '日志服务'},
+        withServer: true,
+      );
       var logQueries = 0;
       MacLauncherSdk? sdk;
       try {
@@ -334,7 +244,10 @@ void main() {
 
   testWidgets('登录启动 switch persists to the preference store', (tester) async {
     await tester.runAsync(() async {
-      final harness = await _Harness.create({'svc': '偏好服务'});
+      final harness = await LauncherTestHarness.create(
+        services: {'svc': '偏好服务'},
+        withServer: true,
+      );
       MacLauncherSdk? sdk;
       try {
         await tester.pumpWidget(harness.app());
@@ -373,7 +286,10 @@ void main() {
     tester,
   ) async {
     await tester.runAsync(() async {
-      final harness = await _Harness.create({'svc': '窗口服务'});
+      final harness = await LauncherTestHarness.create(
+        services: {'svc': '窗口服务'},
+        withServer: true,
+      );
       var entryManaged = false;
       var openedWindows = 0;
       MacLauncherSdk? sdk;
@@ -412,7 +328,10 @@ void main() {
 
   testWidgets('解除绑定：确认对话框展示固定文案与影响摘要，确认后回到空态', (tester) async {
     await tester.runAsync(() async {
-      final harness = await _Harness.create({'svc': '偏好服务'});
+      final harness = await LauncherTestHarness.create(
+        services: {'svc': '偏好服务'},
+        withServer: true,
+      );
       try {
         await harness.preferences.setLoginStartEnabled(
           'project-a',
@@ -455,7 +374,10 @@ void main() {
 
   testWidgets('解除绑定：取消后一切不变', (tester) async {
     await tester.runAsync(() async {
-      final harness = await _Harness.create({'svc': '偏好服务'});
+      final harness = await LauncherTestHarness.create(
+        services: {'svc': '偏好服务'},
+        withServer: true,
+      );
       try {
         await tester.pumpWidget(harness.app());
         await settle(tester);
@@ -479,7 +401,10 @@ void main() {
 
   testWidgets('解除绑定：在线受管会话先收到 setEntryManaged(false) 再断连', (tester) async {
     await tester.runAsync(() async {
-      final harness = await _Harness.create({'svc': '窗口服务'});
+      final harness = await LauncherTestHarness.create(
+        services: {'svc': '窗口服务'},
+        withServer: true,
+      );
       final entryEvents = <bool>[];
       MacLauncherSdk? sdk;
       try {
@@ -519,7 +444,10 @@ void main() {
 
   testWidgets('retained 记录可逐条清除', (tester) async {
     await tester.runAsync(() async {
-      final harness = await _Harness.create({'svc': '旧服务'});
+      final harness = await LauncherTestHarness.create(
+        services: {'svc': '旧服务'},
+        withServer: true,
+      );
       try {
         // 声明移除 svc：产生一条 retained 记录。
         final manifest = File(

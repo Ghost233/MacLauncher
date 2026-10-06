@@ -4,117 +4,32 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:launcher_core/launcher_core.dart';
-import 'package:maclauncher/main.dart';
+
+import 'launcher_test_harness.dart';
 
 /// Invalid-config guidance tests drive the real stack (temp manifest files,
-/// real stores, real association flow) without a server: the management page
-/// renders the card from bindings + refresher state alone.
-class _Harness {
-  _Harness._();
-
-  late Directory directory;
-  late BindingStore bindings;
-  late PreferenceStore preferences;
-  late ConfigRefresher refresher;
-  LauncherServer? _server;
-  EntryHandoffCoordinator? _handoff;
-  UnbindFlow? unbindFlow;
-
-  String get projectDir => '${directory.path}/proj';
-  String get manifestPath => '$projectDir/maclauncher.json';
-
-  static Future<_Harness> create() async {
-    final harness = _Harness._();
-    harness.directory = Directory.systemTemp.createTempSync(
-      'launcher-invalid-test-',
-    );
-    writeManifest(harness.projectDir, ['svc-1', 'svc-2']);
-    harness.bindings = await BindingStore.load(
-      '${harness.directory.path}/bindings.json',
-    );
-    await harness.bindings.associate(harness.manifestPath);
-    harness.preferences = await PreferenceStore.load(
-      '${harness.directory.path}/preferences.json',
-    );
-    harness.refresher = await ConfigRefresher.load(
-      harness.bindings,
-      '${harness.directory.path}/config_state.json',
-    );
-    return harness;
-  }
-
-  static void writeManifest(String dir, List<String> serviceIds) {
-    Directory(dir).createSync(recursive: true);
-    File('$dir/maclauncher.json').writeAsStringSync('''
-{
-  "schemaVersion": 1,
-  "project": {"id": "project-a", "name": "项目甲"},
-  "services": [${serviceIds.map((id) => '{"id": "$id", "name": "$id"}').join(',')}]
-}
-''');
-  }
-
-  /// Wires the real unbind chain (#41's UnbindFlow) with a local server, so
-  /// the wired path of the guidance is exercised end to end.
-  Future<void> enableUnbind() async {
-    _server = await LauncherServer.start(
-      layout: EndpointLayout(directory: '${directory.path}/endpoint'),
-      bindings: bindings,
-    );
-    _handoff = EntryHandoffCoordinator(
-      server: _server!,
-      statusQuery: (_) async => true,
-    );
-    unbindFlow = UnbindFlow(
-      bindings: bindings,
-      preferences: preferences,
-      refresher: refresher,
-      handoff: _handoff!,
-      server: _server!,
-    );
-  }
-
-  MacLauncherApp app() => MacLauncherApp(
-    bindings: bindings,
-    preferences: preferences,
-    refresher: refresher,
-    unbindFlow: unbindFlow,
-  );
-
-  Future<void> invalidate() async {
-    File(manifestPath).deleteSync();
-    final result = await refresher.refresh('project-a');
-    expect(result, isA<RefreshInvalid>());
-  }
-
-  Future<void> dispose() async {
-    _handoff?.dispose();
-    await _server?.close();
-    if (directory.existsSync()) directory.deleteSync(recursive: true);
-  }
-}
-
-Future<void> settle(
-  WidgetTester tester, [
-  Duration delay = const Duration(milliseconds: 400),
-]) async {
-  await Future<void>.delayed(delay);
-  await tester.pump();
-}
-
+/// real stores, real association flow) without a server by default: the
+/// management page renders the card from bindings + refresher state alone.
+/// The wired-unbind test enables the server stack on demand.
 TextButton buttonOf(WidgetTester tester, String label) =>
     tester.widget<TextButton>(
       find.ancestor(of: find.text(label), matching: find.byType(TextButton)),
     );
+
+Future<void> invalidate(LauncherTestHarness harness) async {
+  File(harness.manifestPath).deleteSync();
+  final result = await harness.refresher.refresh('project-a');
+  expect(result, isA<RefreshInvalid>());
+}
 
 void main() {
   testWidgets('invalid card shows both ways out and a one-time explainer', (
     tester,
   ) async {
     await tester.runAsync(() async {
-      final harness = await _Harness.create();
+      final harness = await LauncherTestHarness.create();
       try {
-        await harness.invalidate();
+        await invalidate(harness);
         await tester.pumpWidget(harness.app());
         await tester.pump();
         await tester.pumpAndSettle();
@@ -156,15 +71,15 @@ void main() {
     tester,
   ) async {
     await tester.runAsync(() async {
-      final harness = await _Harness.create();
+      final harness = await LauncherTestHarness.create();
       const channel = MethodChannel('maclauncher/native');
       try {
-        await harness.invalidate();
+        await invalidate(harness);
         // The user moved the project directory: same identity, new path.
-        _Harness.writeManifest('${harness.directory.path}/proj-moved', [
-          'svc-1',
-          'svc-2',
-        ]);
+        LauncherTestHarness.writeManifest(
+          '${harness.directory.path}/proj-moved',
+          {'svc-1': 'svc-1', 'svc-2': 'svc-2'},
+        );
         final movedPath =
             '${harness.directory.path}/proj-moved/maclauncher.json';
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -205,7 +120,7 @@ void main() {
       } finally {
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(channel, null);
-        harness.dispose();
+        await harness.dispose();
       }
     });
   });
@@ -214,15 +129,17 @@ void main() {
     tester,
   ) async {
     await tester.runAsync(() async {
-      final harness = await _Harness.create();
+      final harness = await LauncherTestHarness.create();
       try {
-        await harness.enableUnbind();
+        await harness.enableServerStack();
         // svc-2 becomes a retained read-only record, then the config goes
         // invalid.
-        _Harness.writeManifest(harness.projectDir, ['svc-1']);
+        LauncherTestHarness.writeManifest(harness.projectDir, {
+          'svc-1': 'svc-1',
+        });
         await harness.refresher.refresh('project-a');
         expect(harness.refresher.retainedServices('project-a'), hasLength(1));
-        await harness.invalidate();
+        await invalidate(harness);
 
         await harness.preferences.markInvalidConfigGuidanceSeen();
         await tester.pumpWidget(harness.app());
@@ -254,6 +171,50 @@ void main() {
         expect(find.textContaining('尚未关联任何项目。'), findsOneWidget);
         expect(find.text('已解除绑定。'), findsOneWidget);
       } finally {
+        await harness.dispose();
+      }
+    });
+  });
+
+  testWidgets('retained 记录不受引导动作影响（说明与取消重新选择都不动它）', (tester) async {
+    await tester.runAsync(() async {
+      final harness = await LauncherTestHarness.create();
+      const channel = MethodChannel('maclauncher/native');
+      try {
+        // svc-2 声明移除 → retained 只读记录；随后配置失效。
+        LauncherTestHarness.writeManifest(harness.projectDir, {
+          'svc-1': 'svc-1',
+        });
+        await harness.refresher.refresh('project-a');
+        expect(harness.refresher.retainedServices('project-a'), hasLength(1));
+        await invalidate(harness);
+
+        // 用户在文件选择器中取消：pickManifest 返回 null。
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, (call) async => null);
+
+        await tester.pumpWidget(harness.app());
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        // 一次性说明出现并关闭：不动 retained。
+        expect(find.text('配置失效说明'), findsOneWidget);
+        await tester.tap(find.text('知道了'));
+        await tester.pumpAndSettle();
+        await settle(tester);
+        expect(harness.refresher.retainedServices('project-a'), hasLength(1));
+
+        // 「重新选择配置…」走到文件选择器后取消：也不动 retained。
+        await tester.tap(find.text('重新选择配置…'));
+        await tester.pump();
+        await settle(tester);
+        await tester.pumpAndSettle();
+        expect(harness.refresher.retainedServices('project-a'), hasLength(1));
+        expect(find.textContaining('保留只读记录'), findsOneWidget);
+        expect(find.textContaining('配置失效：'), findsOneWidget);
+      } finally {
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, null);
         await harness.dispose();
       }
     });
