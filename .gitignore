@@ -10,3 +10,6 @@ example/minimal_app/build/
 
 # gh account switching helper (local only)
 .ghswitch
+
+# Project-local Codex account configuration
+/.codex/config.toml
