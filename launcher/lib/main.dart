@@ -415,13 +415,17 @@ class _ManagementPageState extends State<ManagementPage> {
     // 「作为新项目」的效果只有语境差别：修复语境指向失效项目本身，关联
     // 语境指向进入的配置。
     final asNewProject = repair ? '作为新项目会为它生成新的项目身份。' : '作为新项目会为进入的配置生成新的项目身份。';
+    // runtime 绑定没有配置文件路径，决策点③仍走这个冲突弹窗。
+    final existingLocation = existing.manifestPath != null
+        ? '另一路径：\n${existing.manifestPath}\n'
+        : '（运行时自发现关联，无配置文件）\n';
     final message = switch (conflict.kind) {
       AssociationConflictKind.identityBoundToOtherPath =>
         repair
             ? '这份配置与失效的项目是同一身份（原路径：\n${existing.manifestPath}\n）。\n\n'
                   '迁移原绑定会把绑定（含偏好）移到新路径，找回配置；'
                   '$asNewProject'
-            : '相同的项目身份已在另一路径绑定：\n${existing.manifestPath}\n\n'
+            : '相同的项目身份已在$existingLocation\n'
                   '迁移会把原绑定（含偏好）移到新路径；$asNewProject',
       AssociationConflictKind.pathBoundToOtherIdentity =>
         repair

@@ -233,7 +233,7 @@ void main() {
     // The configuration turns invalid after association.
     final binding = (await BindingStore.load('${temp.path}/proj.store.json'))
         .byProjectId('proj-launch')!;
-    File(binding.manifestPath).writeAsStringSync(
+    File(binding.manifestPath!).writeAsStringSync(
       jsonEncode({
         'schemaVersion': 99,
         'project': {'id': 'proj-launch', 'name': 'x'},
@@ -262,9 +262,9 @@ void main() {
       final binding = (await BindingStore.load('${temp.path}/proj.store.json'))
           .byProjectId('proj-launch')!;
       final source =
-          jsonDecode(File(binding.manifestPath).readAsStringSync()) as Map;
+          jsonDecode(File(binding.manifestPath!).readAsStringSync()) as Map;
       (source['project'] as Map)['id'] = 'someone-else';
-      File(binding.manifestPath).writeAsStringSync(jsonEncode(source));
+      File(binding.manifestPath!).writeAsStringSync(jsonEncode(source));
 
       final result = await orchestrator.ensureEntryConnected('proj-launch');
       expect(result, isA<LaunchConfigBlocked>());
@@ -356,6 +356,96 @@ void main() {
 
     final result = await orchestrator.ensureEntryConnected('stranger');
     expect(result, isA<LaunchUnbound>());
+  });
+
+  group('runtime bindings', () {
+    Future<(LauncherServer, BindingStore, LaunchOrchestrator)> setupRuntime({
+      String projectId = 'rt-launch',
+      SdkEntry? entry,
+    }) async {
+      final store = await BindingStore.load('${temp.path}/runtime.store.json');
+      await store.insert(
+        ProjectBinding(
+          projectId: projectId,
+          name: '运行时应用',
+          services: const [ManifestService(id: 'svc', name: '服务')],
+          boundAt: DateTime.now().toUtc(),
+          origin: BindingOrigin.runtime,
+          learnedEntry: entry,
+        ),
+      );
+      final server = await LauncherServer.start(
+        layout: EndpointLayout(directory: '${temp.path}/endpoint-rt'),
+        bindings: store,
+      );
+      return (
+        server,
+        store,
+        LaunchOrchestrator(
+          server: server,
+          store: store,
+          connectTimeout: const Duration(seconds: 15),
+        ),
+      );
+    }
+
+    test('learned executable entry launches and connects', () async {
+      final reportPath = '${temp.path}/report.json';
+      final (server, _, orchestrator) = await setupRuntime(
+        entry: SdkEntry.executable(
+          fixtureExe,
+          args: [
+            'rt-launch',
+            '${temp.path}/endpoint-rt/sdk-v1.sock',
+            reportPath,
+          ],
+        ),
+      );
+      addTearDown(server.close);
+      addTearDown(() async {
+        await Process.run('pkill', ['-f', server.layout.socketPath]);
+      });
+
+      final result = await orchestrator.ensureEntryConnected('rt-launch');
+
+      expect(result, isA<LaunchConnected>());
+      expect(server.registry.isActive('rt-launch'), isTrue);
+      final report = jsonDecode(
+        File(reportPath).readAsStringSync(),
+      ) as Map<String, Object?>;
+      // Runtime entries carry absolute paths; a missing cwd defaults to the
+      // entry's own directory.
+      expect((report['argv'] as List)[0], 'rt-launch');
+      expect(
+        report['cwd'],
+        File(fixtureExe).parent.absolute.resolveSymbolicLinksSync(),
+      );
+      killReportedPid(reportPath);
+    });
+
+    test('runtime binding without an entry cannot be pulled up', () async {
+      final (server, _, orchestrator) = await setupRuntime();
+      addTearDown(server.close);
+
+      final result = await orchestrator.ensureEntryConnected('rt-launch');
+
+      expect(result, isA<LaunchUnavailable>());
+      expect((result as LaunchUnavailable).detail, contains('没有可拉起的入口'));
+      expect(server.registry.isActive('rt-launch'), isFalse);
+    });
+
+    test('a vanished learned entry surfaces 入口失效 without spawning', () async {
+      final (server, _, orchestrator) = await setupRuntime(
+        entry: SdkEntry.executable('/definitely/missing/tool'),
+      );
+      addTearDown(server.close);
+
+      final result = await orchestrator.ensureEntryConnected('rt-launch');
+
+      expect(result, isA<LaunchUnavailable>());
+      expect((result as LaunchUnavailable).detail, contains('入口失效'));
+      expect(server.registry.isActive('rt-launch'), isFalse);
+    });
   });
 
   group('EntryLauncher', () {

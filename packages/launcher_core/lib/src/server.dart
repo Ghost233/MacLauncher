@@ -8,6 +8,7 @@ import 'endpoint.dart';
 import 'endpoint_lock.dart';
 import 'pending_registry.dart';
 import 'registry.dart';
+import 'runtime_binding_sync.dart';
 
 /// Rejection reasons sent in the welcome message.
 class RejectReason {
@@ -39,6 +40,7 @@ class LauncherServer {
     required BindingLookup bindings,
     ConnectionRegistry? registry,
     DiscoveryConfig? discovery,
+    RuntimeBindingSync? runtimeSync,
   }) async {
     layout.ensureDirectory();
     final lock = await EndpointLock.acquire(layout.lockPath);
@@ -63,7 +65,8 @@ class LauncherServer {
           ),
         )
         .._bindings = bindings
-        .._discovery = discovery;
+        .._discovery = discovery
+        .._runtimeSync = runtimeSync;
     } catch (_) {
       try {
         if (socket != null) {
@@ -85,6 +88,7 @@ class LauncherServer {
   final String _runId;
   late final BindingLookup _bindings;
   DiscoveryConfig? _discovery;
+  RuntimeBindingSync? _runtimeSync;
   late final StreamSubscription<Socket> _acceptSub;
   final _sessions = <ServerSession>{};
   int _sessionCounter = 0;
@@ -241,6 +245,26 @@ class ServerSession {
         'accepted': true,
         'launcherSessionId': launcherSessionId,
       });
+
+      // Runtime bindings treat each hello as authoritative: refresh the
+      // service set and self-heal the learned entry. A sync failure must
+      // never kill an accepted session.
+      final runtimeSync = _server._runtimeSync;
+      if (runtimeSync != null) {
+        try {
+          final entryJson = first['entry'];
+          await runtimeSync.afterHandshake(
+            projectId,
+            project!.capabilities,
+            entryJson is Map
+                ? SdkEntry.fromJson(entryJson.cast<String, Object?>())
+                : null,
+            projectName: first['projectName'] as String?,
+          );
+        } catch (e) {
+          stderr.writeln('runtime binding sync failed for $projectId: $e');
+        }
+      }
 
       while (await iterator.moveNext()) {
         final message = iterator.current;

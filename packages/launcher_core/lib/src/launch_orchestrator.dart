@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:maclauncher_sdk/maclauncher_sdk.dart';
+
 import 'binding_store.dart';
+import 'discovery_approval.dart';
 import 'entry_launcher.dart';
 import 'manifest.dart';
 import 'registry.dart';
@@ -86,11 +89,16 @@ class LaunchOrchestrator {
     final binding = store.byProjectId(projectId);
     if (binding == null) return LaunchUnbound(projectId);
 
+    if (binding.origin == BindingOrigin.runtime) {
+      return _openLearnedEntry(binding);
+    }
+
     // Re-read the configuration fresh; a cached configuration must never be
-    // used to launch.
+    // used to launch. Config bindings always carry a manifest path (store
+    // invariant).
     final ProjectManifest manifest;
     try {
-      manifest = await ProjectManifest.read(binding.manifestPath);
+      manifest = await ProjectManifest.read(binding.manifestPath!);
     } on ManifestException catch (e) {
       return LaunchConfigBlocked(e.reason, e.detail);
     }
@@ -107,13 +115,51 @@ class LaunchOrchestrator {
     }
 
     try {
-      final manifestDir = File(binding.manifestPath).parent.path;
+      final manifestDir = File(binding.manifestPath!).parent.path;
       await const EntryLauncher().open(entry, manifestDir: manifestDir);
     } on EntryOpenException catch (e) {
       return LaunchOpenFailed(e);
     }
 
     final project = await _waitForConnection(projectId);
+    if (project == null) {
+      return LaunchUnknown('入口已打开，但 ${connectTimeout.inSeconds} 秒内未建立 SDK 连接');
+    }
+    return LaunchConnected(project);
+  }
+
+  /// Opens a runtime binding's self-reported entry. No manifest is
+  /// involved: the learned entry is the only launch recipe, a missing entry
+  /// means the app can never be pulled up (observe/recycle only), and a
+  /// vanished path is surfaced as 「入口失效」 without recycling anything.
+  Future<LaunchResult> _openLearnedEntry(ProjectBinding binding) async {
+    final learned = binding.learnedEntry;
+    if (learned == null) {
+      return const LaunchUnavailable('该应用没有可拉起的入口（运行时关联未提供入口）');
+    }
+    final invalid = entryInvalidReason(learned);
+    if (invalid != null) {
+      return LaunchUnavailable('入口失效：$invalid');
+    }
+    try {
+      await const EntryLauncher().open(
+        ManifestEntry(
+          kind: learned.kind == SdkEntryKind.app
+              ? EntryKind.app
+              : EntryKind.executable,
+          path: learned.path,
+          args: learned.args,
+          workingDirectory: learned.workingDirectory,
+        ),
+        // Self-reported paths are absolute; the entry's own directory is
+        // the default working directory when none was reported.
+        manifestDir: File(learned.path).parent.path,
+      );
+    } on EntryOpenException catch (e) {
+      return LaunchOpenFailed(e);
+    }
+
+    final project = await _waitForConnection(binding.projectId);
     if (project == null) {
       return LaunchUnknown('入口已打开，但 ${connectTimeout.inSeconds} 秒内未建立 SDK 连接');
     }
