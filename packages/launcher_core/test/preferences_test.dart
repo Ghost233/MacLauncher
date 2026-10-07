@@ -37,6 +37,50 @@ void main() {
   }
 
   group('PreferenceStore', () {
+    test(
+      'menu-bar permission defaults off and stays separate from login start',
+      () async {
+        File(prefsPath).writeAsStringSync('{"proj-a": {"svc": true}}');
+        final store = await PreferenceStore.load(prefsPath);
+        expect(store.isMenuBarAllowed('proj-a'), isFalse);
+        await store.setMenuBarAllowed('proj-a', true);
+        await store.setMenuBarAllowed('proj-b', true);
+        final reloaded = await PreferenceStore.load(prefsPath);
+        expect(reloaded.isMenuBarAllowed('proj-a'), isTrue);
+        expect(reloaded.isMenuBarAllowed('proj-b'), isTrue);
+        expect(reloaded.projects, {'proj-a'});
+        expect(reloaded.enabledServices('proj-a'), {'svc'});
+        await reloaded.removeProject('proj-b');
+        final cleared = await PreferenceStore.load(prefsPath);
+        expect(cleared.isMenuBarAllowed('proj-b'), isFalse);
+        expect(cleared.isMenuBarAllowed('proj-a'), isTrue);
+      },
+    );
+
+    test('rapid permission and login-start edits persist in order', () async {
+      final store = await PreferenceStore.load(prefsPath);
+      await Future.wait([
+        store.setMenuBarAllowed('proj-a', true),
+        store.setLoginStartEnabled('proj-a', 'svc', true),
+        store.setMenuBarAllowed('proj-a', false),
+        store.setMenuBarAllowed('proj-b', true),
+      ]);
+      final reloaded = await PreferenceStore.load(prefsPath);
+      expect(reloaded.isMenuBarAllowed('proj-a'), isFalse);
+      expect(reloaded.isMenuBarAllowed('proj-b'), isTrue);
+      expect(reloaded.isLoginStartEnabled('proj-a', 'svc'), isTrue);
+    });
+
+    test('damaged menu-bar records do not enable permission', () async {
+      File(prefsPath)
+          .writeAsStringSync('{"@menuBar": {"good": true, "bad": "yes"}}');
+      final store = await PreferenceStore.load(prefsPath);
+      expect(store.isMenuBarAllowed('good'), isTrue);
+      expect(store.isMenuBarAllowed('bad'), isFalse);
+      expect(store.corruptionReport!.skippedRecords, 1);
+      expect(store.projects, isEmpty);
+    });
+
     test('login-start preferences persist across a launcher restart', () async {
       final store = await PreferenceStore.load(prefsPath);
       await store.setLoginStartEnabled('proj-a', 'svc-1', true);

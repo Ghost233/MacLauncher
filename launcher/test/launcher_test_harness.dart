@@ -83,6 +83,7 @@ class LauncherTestHarness {
     );
     _handoff = EntryHandoffCoordinator(
       server: _server!,
+      preferences: preferences,
       statusQuery: (_) async => true,
     );
     _unbindFlow = UnbindFlow(

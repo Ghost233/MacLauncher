@@ -67,8 +67,11 @@ class AppCallbacks {
 
   final Future<void> Function()? onOpenWindow;
 
-  /// The launcher asks the app to temporarily hide (managed=true) or restore
-  /// (managed=false) its own menu-bar entry. Returns true on confirmation.
+  /// Temporarily suppress the menu-bar entry (managed=true), or remove that
+  /// suppression (managed=false). The app's own visibility setting is retained;
+  /// false never forces the entry visible or exits launcher cooperation.
+  /// Returns true when this constraint has been applied. Calls are serialized,
+  /// including restoration after disconnect/dispose.
   final Future<bool> Function(bool managed)? onSetEntryManaged;
 
   /// The launcher asks for the app's version status (版本状况). The app
@@ -196,6 +199,8 @@ class MacLauncherSdk {
   /// SDK (not one connection): business mutations of the same service never
   /// run concurrently, even across reconnects. status/logs are unaffected.
   final _mutationGates = <String>{};
+  Future<void> _entryRequests = Future.value();
+  bool _entryMayBeHidden = false;
 
   Stream<SdkConnectionStatus> get states => _states.stream;
 
@@ -369,6 +374,14 @@ class MacLauncherSdk {
       pingTimer?.cancel();
       watchdog?.cancel();
       await sub.cancel();
+      _activeSocket = null;
+      if (_entryMayBeHidden) {
+        // A callback can outlive the socket. Restore after it finishes so a
+        // late hide cannot overwrite fallback; communication never waits on it.
+        unawaited(
+          _setEntryManaged(false).then<void>((_) {}, onError: (Object _) {}),
+        );
+      }
     }
   }
 
@@ -405,6 +418,7 @@ class MacLauncherSdk {
       outcome = await dedup.run(
         id,
         () => _execute(
+          socket,
           method,
           serviceId as String?,
           params as Map<String, Object?>?,
@@ -423,12 +437,15 @@ class MacLauncherSdk {
   }
 
   Future<RequestOutcome> _execute(
+    Socket socket,
     String method,
     String? serviceId,
     Map<String, Object?>? params,
   ) async {
     try {
-      return RequestOutcome.result(await _dispatch(method, serviceId, params));
+      return RequestOutcome.result(
+        await _dispatch(socket, method, serviceId, params),
+      );
     } on ProtocolError catch (e) {
       return RequestOutcome.error(e);
     } catch (e) {
@@ -437,6 +454,7 @@ class MacLauncherSdk {
   }
 
   Future<Object?> _dispatch(
+    Socket socket,
     String method,
     String? serviceId,
     Map<String, Object?>? params,
@@ -444,7 +462,7 @@ class MacLauncherSdk {
     if (method == kMethodOpenWindow ||
         method == kMethodSetEntryManaged ||
         method == kMethodVersionStatus) {
-      return _dispatchApp(method, params);
+      return _dispatchApp(socket, method, params);
     }
     if (serviceId == null) {
       throw ProtocolError(ProtocolError.invalid, 'missing serviceId');
@@ -517,6 +535,7 @@ class MacLauncherSdk {
   }
 
   Future<Object?> _dispatchApp(
+    Socket socket,
     String method,
     Map<String, Object?>? params,
   ) async {
@@ -532,14 +551,20 @@ class MacLauncherSdk {
         await cb();
         return const {};
       case kMethodSetEntryManaged:
-        final cb =
-            app?.onSetEntryManaged ??
-            (throw ProtocolError(
-              ProtocolError.unsupported,
-              'setEntryManaged not supported',
-            ));
-        final managed = params?['managed'] == true;
-        return {'confirmed': await cb(managed)};
+        if (app?.onSetEntryManaged == null) {
+          throw ProtocolError(
+            ProtocolError.unsupported,
+            'setEntryManaged not supported',
+          );
+        }
+        final managed = params?['managed'];
+        if (managed is! bool) {
+          throw ProtocolError(
+            ProtocolError.invalid,
+            'managed must be a boolean',
+          );
+        }
+        return {'confirmed': await _setEntryManaged(managed, socket: socket)};
       case kMethodVersionStatus:
         final cb = app?.onVersionStatus;
         // No callback is not an error: answer 「不支持更新」 so the launcher
@@ -562,6 +587,22 @@ class MacLauncherSdk {
           'unknown method: $method',
         );
     }
+  }
+
+  Future<bool> _setEntryManaged(bool managed, {Socket? socket}) {
+    final request = _entryRequests.then((_) async {
+      if (socket != null && (_disposed || !identical(socket, _activeSocket))) {
+        return false;
+      }
+      // Even a failed/throwing callback may already have changed the native
+      // entry, so restoration must cover unconfirmed hides too.
+      if (managed) _entryMayBeHidden = true;
+      final confirmed = await _app!.onSetEntryManaged!(managed);
+      if (!managed && confirmed) _entryMayBeHidden = false;
+      return confirmed;
+    });
+    _entryRequests = request.then<void>((_) {}, onError: (Object _) {});
+    return request;
   }
 
   void _emit(SdkConnectionStatus status) {

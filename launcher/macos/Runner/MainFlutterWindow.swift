@@ -21,6 +21,7 @@ class MainFlutterWindow: NSWindow {
     let channel = FlutterMethodChannel(
       name: "maclauncher/native",
       binaryMessenger: flutterViewController.engine.binaryMessenger)
+    (NSApp.delegate as? AppDelegate)?.nativeChannel = channel
     channel.setMethodCallHandler { call, result in
       switch call.method {
       case "pickManifest":

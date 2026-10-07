@@ -26,6 +26,8 @@ class ProjectCard extends StatelessWidget {
     this.registry,
     this.operations,
     this.updateService,
+    this.onMenuBarAllowedChanged,
+    this.onRetryMenuBar,
   });
 
   final ProjectBinding binding;
@@ -51,12 +53,17 @@ class ProjectCard extends StatelessWidget {
   /// 解除绑定入口；为 null（启动器未就绪）时不显示。失效态引导框中的
   /// 「解除绑定…」共用此回调（issue #43），此时入口置灰并注明原因。
   final VoidCallback? onUnbind;
+  final ValueChanged<bool>? onMenuBarAllowedChanged;
+  final VoidCallback? onRetryMenuBar;
 
   @override
   Widget build(BuildContext context) {
     final connected = registry?.isActive(binding.projectId) ?? false;
     final capabilities = registry?.byProject(binding.projectId)?.capabilities;
     final canOpenWindow = capabilities?.supportsApp(kMethodOpenWindow) ?? false;
+    final menuBarUnsupported =
+        connected &&
+        !(capabilities?.supportsApp(kMethodSetEntryManaged) ?? false);
     final invalid = refresher.invalidReason(binding.projectId);
     final retained = refresher.retainedServices(binding.projectId);
     // Runtime bindings (#45): the learned entry can vanish from disk while
@@ -90,14 +97,22 @@ class ProjectCard extends StatelessWidget {
                     EntryHandoffStatus.managed => '统一入口：接管完成',
                     EntryHandoffStatus.unmanaged => '统一入口：未接管',
                     EntryHandoffStatus.notManageable => '应用保留自身入口',
+                    EntryHandoffStatus.applying => '菜单栏：正在应用',
+                    EntryHandoffStatus.allowed => '菜单栏：由应用决定',
+                    EntryHandoffStatus.failed => '菜单栏：尚未应用',
                   },
                   color: switch (handoffStatus) {
                     EntryHandoffStatus.managed => AppTheme.accent,
                     EntryHandoffStatus.unmanaged => AppTheme.neutral,
                     EntryHandoffStatus.notManageable => AppTheme.neutral,
+                    EntryHandoffStatus.applying => AppTheme.neutral,
+                    EntryHandoffStatus.allowed => AppTheme.accent,
+                    EntryHandoffStatus.failed => AppTheme.warn,
                   },
                   background: switch (handoffStatus) {
                     EntryHandoffStatus.managed => AppTheme.accentSoft,
+                    EntryHandoffStatus.allowed => AppTheme.accentSoft,
+                    EntryHandoffStatus.failed => AppTheme.warnSoft,
                     _ => AppTheme.neutralSoft,
                   },
                 ),
@@ -140,6 +155,43 @@ class ProjectCard extends StatelessWidget {
             ),
             const SizedBox(height: AppTheme.gapXs),
             Text('项目标识：${binding.projectId}', style: AppTheme.monoMuted),
+            if (onMenuBarAllowedChanged != null)
+              Row(
+                children: [
+                  Expanded(
+                    child: Material(
+                      type: MaterialType.transparency,
+                      child: SwitchListTile(
+                        key: ValueKey('menu-bar-${binding.projectId}'),
+                        contentPadding: EdgeInsets.zero,
+                        title: const Text('允许应用显示菜单栏', style: AppTheme.body),
+                        subtitle: Text(
+                          menuBarUnsupported
+                              ? '应用不支持菜单栏控制'
+                              : !connected
+                              ? '等待应用连接后应用'
+                              : handoffStatus == EntryHandoffStatus.failed
+                              ? '尚未应用，可重试。'
+                              : '开启后由应用自身设置决定是否显示。',
+                          style: AppTheme.captionMuted,
+                        ),
+                        value: preferences.isMenuBarAllowed(binding.projectId),
+                        onChanged: menuBarUnsupported
+                            ? null
+                            : onMenuBarAllowedChanged,
+                      ),
+                    ),
+                  ),
+                  if (connected &&
+                      !menuBarUnsupported &&
+                      handoffStatus == EntryHandoffStatus.failed &&
+                      onRetryMenuBar != null)
+                    TextButton(
+                      onPressed: onRetryMenuBar,
+                      child: const Text('重试'),
+                    ),
+                ],
+              ),
             if (entryInvalid != null)
               Padding(
                 padding: const EdgeInsets.only(top: AppTheme.gapSm),

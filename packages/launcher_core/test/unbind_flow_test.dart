@@ -88,6 +88,7 @@ void main() {
   void expectLocalStateCleared() {
     expect(store.bindings, isEmpty);
     expect(prefs.enabledServices('proj-a'), isEmpty);
+    expect(prefs.isMenuBarAllowed('proj-a'), isFalse);
     expect(refresher.invalidReason('proj-a'), isNull);
     expect(refresher.retainedServices('proj-a'), isEmpty);
   }
@@ -97,6 +98,7 @@ void main() {
     expect(reloadedStore.bindings, isEmpty);
     final reloadedPrefs = await PreferenceStore.load(prefsPath());
     expect(reloadedPrefs.enabledServices('proj-a'), isEmpty);
+    expect(reloadedPrefs.isMenuBarAllowed('proj-a'), isFalse);
     final reloadedRefresher = await ConfigRefresher.load(
       reloadedStore,
       statePath(),
@@ -111,6 +113,7 @@ void main() {
     addTearDown(server.close);
     final coordinator = EntryHandoffCoordinator(
       server: server,
+      preferences: prefs,
       statusQuery: (_) async => true,
       releaseTimeout: const Duration(milliseconds: 300),
     );
@@ -165,10 +168,12 @@ void main() {
 
   test('应用不在线：解除绑定照样完成且不报错', () async {
     await seedProject();
+    await prefs.setMenuBarAllowed('proj-a', true);
     final server = await LauncherServer.start(layout: layout, bindings: store);
     addTearDown(server.close);
     final coordinator = EntryHandoffCoordinator(
       server: server,
+      preferences: prefs,
       statusQuery: (_) async => true,
       releaseTimeout: const Duration(milliseconds: 300),
     );
@@ -192,6 +197,7 @@ void main() {
     addTearDown(server.close);
     final coordinator = EntryHandoffCoordinator(
       server: server,
+      preferences: prefs,
       statusQuery: (_) async => true,
     );
     addTearDown(coordinator.dispose);

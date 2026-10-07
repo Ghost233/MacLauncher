@@ -90,6 +90,7 @@ Future<void> main() async {
     final ops = operations;
     handoff = EntryHandoffCoordinator(
       server: server,
+      preferences: prefs,
       statusQuery: (projectId) async {
         final project = server!.registry.byProject(projectId);
         if (project != null) {
@@ -132,6 +133,16 @@ Future<void> main() async {
     prefs.corruptionReport,
     refresher.corruptionReport,
   ].whereType<StorageCorruptionReport>().toList();
+
+  const MethodChannel('maclauncher/native').setMethodCallHandler((call) async {
+    if (call.method != 'prepareToQuit') throw MissingPluginException();
+    try {
+      await handoff?.releaseAll();
+    } finally {
+      await server?.close();
+    }
+    return null;
+  });
 
   runApp(
     MacLauncherApp(
@@ -343,6 +354,20 @@ class _ManagementPageState extends State<ManagementPage> {
       _handoffStatus[projectId] ??
       widget.handoff?.statusOf(projectId) ??
       EntryHandoffStatus.unmanaged;
+
+  Future<void> _setMenuBarAllowed(String projectId, bool allowed) async {
+    try {
+      final handoff = widget.handoff;
+      if (handoff == null) {
+        await widget.preferences.setMenuBarAllowed(projectId, allowed);
+      } else {
+        await handoff.setMenuBarAllowed(projectId, allowed);
+      }
+    } catch (error) {
+      if (mounted) _toast('菜单栏许可保存失败：$error');
+    }
+    if (mounted) setState(() {});
+  }
 
   void _showCorruptionNotice() {
     final lines = [
@@ -836,6 +861,14 @@ class _ManagementPageState extends State<ManagementPage> {
                           preferences: widget.preferences,
                           refresher: widget.refresher,
                           handoffStatus: handoffStatusOf(binding.projectId),
+                          onMenuBarAllowedChanged: (allowed) => unawaited(
+                            _setMenuBarAllowed(binding.projectId, allowed),
+                          ),
+                          onRetryMenuBar: widget.handoff == null
+                              ? null
+                              : () => unawaited(
+                                  widget.handoff!.retry(binding.projectId),
+                                ),
                           onOpenWindow: () async {
                             final handoff = widget.handoff;
                             if (handoff == null) return;

@@ -263,7 +263,7 @@ void main() {
           harness.preferences.isLoginStartEnabled('project-a', 'svc'),
           isFalse,
         );
-        await tester.tap(find.byType(Switch));
+        await tester.tap(find.byType(Switch).last);
         await settle(tester, const Duration(milliseconds: 200));
 
         expect(

@@ -128,15 +128,25 @@ onLogs: (LogQuery query) async => LogBatch(
 AppCallbacks(
   onOpenWindow: () async { /* 用户点「打开窗口」：激活/新建主窗口 */ },
   onSetEntryManaged: (managed) async {
-    // 启动器请求暂时隐藏（true）或归还（false）你的菜单栏入口。
+    // true：Launcher 暂时要求隐藏；false：撤销这个隐藏约束。
+    // 保留应用自身的显示设置，不要用 managed 切换业务模式。
+    // 实际可见 = 应用自身允许显示 && !managed。
     // 完成后返回 true 确认；返回 false 表示无法配合。
     return true;
   },
 )
 ```
 
-约定：接管期间你的入口应隐藏；启动器退出时会尽力 `managed: false` 归还，
-**绝不替你回收业务**。详见 [ENTRY_HANDOFF.md](ENTRY_HANDOFF.md)。
+管理窗口为每个项目提供「允许应用显示菜单栏」开关，默认关闭。关闭时请求
+`managed: true`；开启时请求 `managed: false`，允许应用按自身设置决定是否显示，
+不保证入口可见。应用还应在自身显示设置变化时重新计算上述可见性；Launcher
+不改变该设置，不绘制网速或原菜单，菜单栏许可不影响 SDK 连接与服务协作。
+
+SDK 串行执行菜单栏回调；连接结束或 SDK 退出时，对可能已经隐藏的入口追加
+`managed: false` 归还，等待在途菜单栏回调完成后执行，防止迟到隐藏覆盖归还。
+菜单栏回调应及时完成；SDK 关闭通信与业务运行不会等待这些回调。正常退出
+Launcher 时也会尽力请求归还，**绝不替你回收业务**。详见
+[ENTRY_HANDOFF.md](ENTRY_HANDOFF.md) 和 [ADR 0004](adr/0004-project-menu-bar-permission.md)。
 
 ## 版本状况查询
 

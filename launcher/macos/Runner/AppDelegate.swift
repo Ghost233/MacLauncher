@@ -7,6 +7,9 @@ class AppDelegate: FlutterAppDelegate {
   private var pendingDiscoveryItem: NSMenuItem?
   private var pendingDiscoverySeparator: NSMenuItem?
   weak var mainWindow: NSWindow?
+  var nativeChannel: FlutterMethodChannel?
+  private var waitingForEntryRelease = false
+  private var readyToTerminate = false
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
     // Menu-bar resident: no Dock icon, no forced main window.
@@ -40,6 +43,23 @@ class AppDelegate: FlutterAppDelegate {
 
   @objc private func quitApp() {
     NSApp.terminate(nil)
+  }
+
+  override func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    if readyToTerminate { return .terminateNow }
+    if waitingForEntryRelease { return .terminateLater }
+    guard let nativeChannel else { return .terminateNow }
+    waitingForEntryRelease = true
+    let finish = { [weak self] in
+      guard let self, !self.readyToTerminate else { return }
+      self.readyToTerminate = true
+      sender.reply(toApplicationShouldTerminate: true)
+    }
+    // Give Dart a bounded opportunity to return entries and close SDK sessions.
+    // The SDK's disconnect fallback also covers crashes or an unresponsive engine.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: finish)
+    nativeChannel.invokeMethod("prepareToQuit", arguments: nil) { _ in finish() }
+    return .terminateLater
   }
 
   /// 待批准菜单行（#45 运行时发现，最小实现）：有待批准应用时托盘菜单

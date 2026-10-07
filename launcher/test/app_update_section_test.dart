@@ -101,6 +101,7 @@ class _Harness {
     );
     harness.handoff = EntryHandoffCoordinator(
       server: harness.server,
+      preferences: harness.preferences,
       statusQuery: (_) async => true,
     );
     harness.downloader = _FakeDownloader();

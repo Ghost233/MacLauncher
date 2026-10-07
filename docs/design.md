@@ -33,6 +33,7 @@
 widget 测试靠可见文案定位。以下文本是测试锚点，改动 UI 文案时同步改测试（launcher/test/widget_test.dart、settings_page_test.dart、app_update_section_test.dart、self_update_flow_test.dart、invalid_guidance_test.dart、pending_approval_test.dart）：
 
 - 项目卡：项目名、「应用连接：未连接/已连接」、「统一入口：接管完成」、「打开窗口」、「解除绑定」按钮、retained 行「声明已移除…不代表运行已终止。」与「清除」
+- 菜单栏许可：开关「允许应用显示菜单栏」、离线说明「等待应用连接后应用」、不支持说明「应用不支持菜单栏控制」、状态「菜单栏：正在应用/由应用决定/尚未应用」、失败说明「尚未应用，可重试。」及按钮「重试」（launcher/test/menu_bar_permission_test.dart）。开关表示 Launcher 的许可，不表示原入口实际可见。
 - 服务行：「服务 {名}（{id}）」、「状态：…」、「实例：…」、「已就绪」、按钮「启动/回收/刷新/日志」
 - 日志面板：「读取中…」「应用未提供日志能力。」「无日志（读取成功但为空）。」「旧内容」「未提供实例范围」、关闭按钮 Icons.close
 - 设置页：三个开关文案与「需要签名证书，暂不可用」说明、「立即检查更新」

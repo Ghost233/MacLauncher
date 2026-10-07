@@ -27,10 +27,12 @@ class RecordingEntryCallbacks {
 void main() {
   late Directory temp;
   late EndpointLayout layout;
+  late PreferenceStore preferences;
 
-  setUp(() {
+  setUp(() async {
     temp = Directory.systemTemp.createTempSync('launcher-handoff-test');
     layout = EndpointLayout(directory: '${temp.path}/endpoint');
+    preferences = await PreferenceStore.load('${temp.path}/preferences.json');
   });
 
   tearDown(() {
@@ -73,6 +75,7 @@ void main() {
     final order = <String>[];
     final coordinator = EntryHandoffCoordinator(
       server: server,
+      preferences: preferences,
       statusQuery: (_) async {
         order.add('statusQuery');
         return true;
@@ -92,11 +95,12 @@ void main() {
     expect(probe, ['setEntryManaged(true)']);
   });
 
-  test('确认失败保持 unmanaged，应用入口不被触碰', () async {
+  test('确认失败保留许可并标记 failed', () async {
     final server = await startServer();
     addTearDown(server.close);
     final coordinator = EntryHandoffCoordinator(
       server: server,
+      preferences: preferences,
       statusQuery: (_) async => true,
     );
     addTearDown(coordinator.dispose);
@@ -109,7 +113,7 @@ void main() {
     // 给协调器留出处理应答的时间。
     await Future<void>.delayed(const Duration(milliseconds: 200));
     expect(entry.events, ['setEntryManaged(true)']);
-    expect(coordinator.statusOf('proj-1'), EntryHandoffStatus.unmanaged);
+    expect(coordinator.statusOf('proj-1'), EntryHandoffStatus.failed);
   });
 
   test('未声明 setEntryManaged 能力：notManageable 且不发请求', () async {
@@ -118,6 +122,7 @@ void main() {
     var statusQueries = 0;
     final coordinator = EntryHandoffCoordinator(
       server: server,
+      preferences: preferences,
       statusQuery: (_) async {
         statusQueries++;
         return true;
@@ -142,6 +147,7 @@ void main() {
     addTearDown(server.close);
     final coordinator = EntryHandoffCoordinator(
       server: server,
+      preferences: preferences,
       statusQuery: (_) async => true,
     );
     addTearDown(coordinator.dispose);
@@ -171,6 +177,7 @@ void main() {
     addTearDown(server.close);
     final coordinator = EntryHandoffCoordinator(
       server: server,
+      preferences: preferences,
       statusQuery: (_) async => true,
     );
     addTearDown(coordinator.dispose);
@@ -179,7 +186,7 @@ void main() {
     final entryA = RecordingEntryCallbacks()..setEntryGate = Completer<void>();
     final sdkA = connectApp(entryA);
     await until(() => entryA.events.isNotEmpty);
-    expect(coordinator.statusOf('proj-1'), EntryHandoffStatus.unmanaged);
+    expect(coordinator.statusOf('proj-1'), EntryHandoffStatus.applying);
 
     // A 断开（请求仍在途），B 重新接入。
     await sdkA.dispose();
@@ -209,6 +216,7 @@ void main() {
     addTearDown(server.close);
     final coordinator = EntryHandoffCoordinator(
       server: server,
+      preferences: preferences,
       statusQuery: (_) async => true,
     );
     addTearDown(coordinator.dispose);
@@ -237,6 +245,7 @@ void main() {
     addTearDown(server.close);
     final coordinator = EntryHandoffCoordinator(
       server: server,
+      preferences: preferences,
       statusQuery: (_) async => true,
     );
     addTearDown(coordinator.dispose);
@@ -260,6 +269,7 @@ void main() {
     addTearDown(server.close);
     final coordinator = EntryHandoffCoordinator(
       server: server,
+      preferences: preferences,
       statusQuery: (_) async => true,
       releaseTimeout: const Duration(milliseconds: 300),
     );
@@ -317,6 +327,7 @@ void main() {
       addTearDown(server.close);
       final coordinator = EntryHandoffCoordinator(
         server: server,
+        preferences: preferences,
         statusQuery: (_) async => true,
         releaseTimeout: const Duration(milliseconds: 300),
       );
@@ -340,6 +351,7 @@ void main() {
       addTearDown(server.close);
       final coordinator = EntryHandoffCoordinator(
         server: server,
+        preferences: preferences,
         statusQuery: (_) async => true,
         releaseTimeout: const Duration(milliseconds: 100),
       );
@@ -368,6 +380,7 @@ void main() {
       addTearDown(server.close);
       final coordinator = EntryHandoffCoordinator(
         server: server,
+        preferences: preferences,
         statusQuery: (_) async => true,
         releaseTimeout: const Duration(milliseconds: 300),
       );

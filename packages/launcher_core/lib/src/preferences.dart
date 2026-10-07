@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'storage_corruption.dart';
 
-/// Launcher-local login-start preferences.
+/// Launcher-local login-start, menu-bar and update preferences.
 ///
 /// Preferences live in the launcher's own storage only — never written back
 /// into project configuration. Recycling a running service never clears
@@ -16,6 +16,7 @@ class PreferenceStore {
     this._updatePrefs,
     this._guidance,
     this._ignoredDiscovery,
+    this._menuBarAllowed,
     this.corruptionReport,
   );
 
@@ -30,6 +31,8 @@ class PreferenceStore {
 
   /// Reserved top-level key for runtime-discovery state (the ignore list).
   static const _discoveryKey = '@discovery';
+
+  static const _menuBarKey = '@menuBar';
 
   static const _keyCheckOnLaunch = 'checkOnLaunch';
   static const _keyAutoDownload = 'autoDownload';
@@ -55,6 +58,11 @@ class PreferenceStore {
   /// ever surfacing a pending card again.
   final Set<String> _ignoredDiscovery;
 
+  /// projectId → permission to follow the application's own menu-bar setting.
+  final Map<String, bool> _menuBarAllowed;
+  final _menuBarRevisions = <String, int>{};
+  Future<void> _pendingSave = Future.value();
+
   /// Damage found while loading, or null when the file was fully healthy.
   final StorageCorruptionReport? corruptionReport;
 
@@ -66,7 +74,7 @@ class PreferenceStore {
   static Future<PreferenceStore> load(String filePath) async {
     final file = File(filePath);
     if (!file.existsSync()) {
-      return PreferenceStore._(file, {}, {}, {}, {}, null);
+      return PreferenceStore._(file, {}, {}, {}, {}, {}, null);
     }
     final decode = await decodeStoreFile(
       file,
@@ -74,12 +82,13 @@ class PreferenceStore {
     );
     final wholeFileDamage = decode.wholeFileDamage;
     if (wholeFileDamage != null) {
-      return PreferenceStore._(file, {}, {}, {}, {}, wholeFileDamage);
+      return PreferenceStore._(file, {}, {}, {}, {}, {}, wholeFileDamage);
     }
     final prefs = <String, Map<String, bool>>{};
     final updatePrefs = <String, bool>{};
     final guidance = <String, bool>{};
     final ignoredDiscovery = <String>{};
+    final menuBarAllowed = <String, bool>{};
     var skipped = 0;
     for (final entry
         in (decode.decoded! as Map).cast<String, Object?>().entries) {
@@ -88,6 +97,16 @@ class PreferenceStore {
         continue;
       }
       final record = (entry.value! as Map).cast<String, Object?>();
+      if (entry.key == _menuBarKey) {
+        for (final permission in record.entries) {
+          if (permission.value is! bool) {
+            skipped++;
+          } else if (permission.value == true) {
+            menuBarAllowed[permission.key] = true;
+          }
+        }
+        continue;
+      }
       if (entry.key == _updatesKey || entry.key == _guidanceKey) {
         final target = entry.key == _updatesKey ? updatePrefs : guidance;
         for (final pref in record.entries) {
@@ -116,6 +135,7 @@ class PreferenceStore {
       updatePrefs,
       guidance,
       ignoredDiscovery,
+      menuBarAllowed,
       skippedRecordsReport(file, skipped),
     );
   }
@@ -149,7 +169,37 @@ class PreferenceStore {
 
   /// Drops all preferences for a project (used by unbind).
   Future<void> removeProject(String projectId) async {
-    if (_prefs.remove(projectId) != null) await _save();
+    final hadServices = _prefs.remove(projectId) != null;
+    final hadMenuBarPermission = _menuBarAllowed.remove(projectId) != null;
+    _menuBarRevisions[projectId] = (_menuBarRevisions[projectId] ?? 0) + 1;
+    if (hadServices || hadMenuBarPermission) await _save();
+  }
+
+  /// Default: hidden by the launcher, including preference files predating it.
+  bool isMenuBarAllowed(String projectId) =>
+      _menuBarAllowed[projectId] ?? false;
+
+  Future<void> setMenuBarAllowed(String projectId, bool allowed) async {
+    final previous = _menuBarAllowed[projectId];
+    final revision = (_menuBarRevisions[projectId] ?? 0) + 1;
+    _menuBarRevisions[projectId] = revision;
+    if (allowed) {
+      _menuBarAllowed[projectId] = true;
+    } else {
+      _menuBarAllowed.remove(projectId);
+    }
+    try {
+      await _save();
+    } catch (_) {
+      if (_menuBarRevisions[projectId] == revision) {
+        if (previous == null) {
+          _menuBarAllowed.remove(projectId);
+        } else {
+          _menuBarAllowed[projectId] = previous;
+        }
+      }
+      rethrow;
+    }
   }
 
   // ---- launcher-wide update preferences ----
@@ -246,21 +296,28 @@ class PreferenceStore {
     }
   }
 
-  Future<void> _save() async {
+  Future<void> _save() {
+    // Snapshot each edit and serialize writes to the shared temporary file.
+    // Rapid menu-bar toggles must persist in order, alongside other preferences.
+    final contents = const JsonEncoder.withIndent('  ').convert({
+      if (_updatePrefs.isNotEmpty) _updatesKey: _updatePrefs,
+      if (_guidance.isNotEmpty) _guidanceKey: _guidance,
+      if (_menuBarAllowed.isNotEmpty) _menuBarKey: _menuBarAllowed,
+      if (_ignoredDiscovery.isNotEmpty)
+        _discoveryKey: {
+          _keyIgnoredProjects: _ignoredDiscovery.toList()..sort(),
+        },
+      ..._prefs,
+    });
+    final save = _pendingSave.then((_) => _write(contents));
+    _pendingSave = save.catchError((Object _) {});
+    return save;
+  }
+
+  Future<void> _write(String contents) async {
     await _file.parent.create(recursive: true);
     final tmp = File('${_file.path}.tmp');
-    await tmp.writeAsString(
-      const JsonEncoder.withIndent('  ').convert({
-        if (_updatePrefs.isNotEmpty) _updatesKey: _updatePrefs,
-        if (_guidance.isNotEmpty) _guidanceKey: _guidance,
-        if (_ignoredDiscovery.isNotEmpty)
-          _discoveryKey: {
-            _keyIgnoredProjects: _ignoredDiscovery.toList()..sort(),
-          },
-        ..._prefs,
-      }),
-      flush: true,
-    );
+    await tmp.writeAsString(contents, flush: true);
     await tmp.rename(_file.path);
     final result = await Process.run('chmod', ['600', _file.path]);
     if (result.exitCode != 0) {
