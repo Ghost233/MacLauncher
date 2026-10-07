@@ -17,6 +17,12 @@ const String kMethodOpenWindow = 'openWindow';
 const String kMethodSetEntryManaged = 'setEntryManaged';
 const String kMethodVersionStatus = 'versionStatus';
 
+/// Handshake rejection reason: the project is not associated yet and is
+/// waiting for the user's approval in the launcher UI (runtime discovery).
+/// This is a normal pre-approval state, not an error — the SDK keeps
+/// retrying and the handshake succeeds once the user approves.
+const String kRejectReasonPendingApproval = 'pending-approval';
+
 /// Business state reported by the application. Reading errors and SDK
 /// disconnects must never be mapped to [ServiceState.failed] or
 /// [ServiceState.stopped] by anyone but the application itself.
