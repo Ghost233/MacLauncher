@@ -6,12 +6,15 @@ import 'package:maclauncher_sdk/maclauncher_sdk.dart';
 import 'binding_lookup.dart';
 import 'endpoint.dart';
 import 'endpoint_lock.dart';
+import 'pending_registry.dart';
 import 'registry.dart';
+import 'runtime_binding_sync.dart';
 
 /// Rejection reasons sent in the welcome message.
 class RejectReason {
   static const String protocolVersion = 'protocol-version';
   static const String unknownProject = 'unknown-project';
+  static const String pendingApproval = 'pending-approval';
   static const String conflict = 'conflict';
   static const String invalidHello = 'invalid-hello';
 }
@@ -36,6 +39,8 @@ class LauncherServer {
     required EndpointLayout layout,
     required BindingLookup bindings,
     ConnectionRegistry? registry,
+    DiscoveryConfig? discovery,
+    RuntimeBindingSync? runtimeSync,
   }) async {
     layout.ensureDirectory();
     final lock = await EndpointLock.acquire(layout.lockPath);
@@ -51,12 +56,17 @@ class LauncherServer {
       );
       layout.secureSocket();
       return LauncherServer._(
-        layout: layout,
-        registry: registry ?? ConnectionRegistry(),
-        lock: lock,
-        socket: socket,
-        runId: DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(16),
-      ).._bindings = bindings;
+          layout: layout,
+          registry: registry ?? ConnectionRegistry(),
+          lock: lock,
+          socket: socket,
+          runId: DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(
+            16,
+          ),
+        )
+        .._bindings = bindings
+        .._discovery = discovery
+        .._runtimeSync = runtimeSync;
     } catch (_) {
       try {
         if (socket != null) {
@@ -77,6 +87,8 @@ class LauncherServer {
   final ServerSocket _socket;
   final String _runId;
   late final BindingLookup _bindings;
+  DiscoveryConfig? _discovery;
+  RuntimeBindingSync? _runtimeSync;
   late final StreamSubscription<Socket> _acceptSub;
   final _sessions = <ServerSession>{};
   int _sessionCounter = 0;
@@ -125,6 +137,42 @@ class LauncherServer {
       'reason': reason,
     });
   }
+
+  /// Handles a hello from an unbound project.
+  ///
+  /// Without a [DiscoveryConfig] the pre-discovery behavior stands:
+  /// rejected as unknown-project. With one, ignored projects are rejected
+  /// the same way (silently), while everything else is recorded in the
+  /// pending registry and rejected as pending-approval — the SDK's
+  /// reconnect loop then doubles as the approval poll.
+  Future<String> _handleUnknownProject(
+    Map<String, Object?> hello,
+    String projectId,
+  ) async {
+    final discovery = _discovery;
+    if (discovery == null || discovery.isIgnored(projectId)) {
+      return RejectReason.unknownProject;
+    }
+    final existing = discovery.pending.byProject(projectId);
+    String? sourcePath = existing?.sourceProcessPath;
+    if (sourcePath == null && discovery.peerProbe != null) {
+      sourcePath = await discovery.peerProbe!();
+    }
+    final capabilities = CapabilitySet.fromJson(
+      (hello['capabilities'] as Map).cast<String, Object?>(),
+    );
+    final entryJson = hello['entry'];
+    discovery.pending.record(
+      projectId: projectId,
+      projectName: hello['projectName'] as String?,
+      services: capabilities.services,
+      entry: entryJson is Map
+          ? SdkEntry.fromJson(entryJson.cast<String, Object?>())
+          : null,
+      sourceProcessPath: sourcePath,
+    );
+    return RejectReason.pendingApproval;
+  }
 }
 
 /// One accepted (or in-handshake) connection.
@@ -170,7 +218,8 @@ class ServerSession {
       }
       final projectId = first['projectId'] as String;
       if (!_server._bindings.isKnownProject(projectId)) {
-        _server._reject(_socket, RejectReason.unknownProject);
+        final handled = await _server._handleUnknownProject(first, projectId);
+        _server._reject(_socket, handled);
         return;
       }
       if (_server.registry.isActive(projectId)) {
@@ -196,6 +245,26 @@ class ServerSession {
         'accepted': true,
         'launcherSessionId': launcherSessionId,
       });
+
+      // Runtime bindings treat each hello as authoritative: refresh the
+      // service set and self-heal the learned entry. A sync failure must
+      // never kill an accepted session.
+      final runtimeSync = _server._runtimeSync;
+      if (runtimeSync != null) {
+        try {
+          final entryJson = first['entry'];
+          await runtimeSync.afterHandshake(
+            projectId,
+            project!.capabilities,
+            entryJson is Map
+                ? SdkEntry.fromJson(entryJson.cast<String, Object?>())
+                : null,
+            projectName: first['projectName'] as String?,
+          );
+        } catch (e) {
+          stderr.writeln('runtime binding sync failed for $projectId: $e');
+        }
+      }
 
       while (await iterator.moveNext()) {
         final message = iterator.current;

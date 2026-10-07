@@ -354,5 +354,71 @@ void main() {
       expect(report.backupPath, isNull);
       expect(report.skippedRecords, 1);
     });
+
+    test('discovery ignore list persists across a restart', () async {
+      final store = await PreferenceStore.load(prefsPath);
+      expect(store.ignoredDiscoveryProjects, isEmpty);
+
+      await store.setDiscoveryIgnored('proj-x', true);
+      await store.setDiscoveryIgnored('proj-y', true);
+      await store.setDiscoveryIgnored('proj-x', true); // no-op
+      expect(store.ignoredDiscoveryProjects, {'proj-x', 'proj-y'});
+
+      final reloaded = await PreferenceStore.load(prefsPath);
+      expect(reloaded.ignoredDiscoveryProjects, {'proj-x', 'proj-y'});
+
+      await reloaded.setDiscoveryIgnored('proj-x', false);
+      expect(reloaded.ignoredDiscoveryProjects, {'proj-y'});
+      final again = await PreferenceStore.load(prefsPath);
+      expect(again.ignoredDiscoveryProjects, {'proj-y'});
+      expect(again.corruptionReport, isNull);
+    });
+
+    test(
+      'unignoring the last project removes the @discovery section',
+      () async {
+        final store = await PreferenceStore.load(prefsPath);
+        await store.setDiscoveryIgnored('proj-x', true);
+        await store.setDiscoveryIgnored('proj-x', false);
+
+        final raw = (jsonDecode(File(prefsPath).readAsStringSync()) as Map)
+            .cast<String, Object?>();
+        expect(raw.containsKey('@discovery'), isFalse);
+      },
+    );
+
+    test(
+      'legacy files without @discovery load with an empty ignore list',
+      () async {
+        File(prefsPath).writeAsStringSync(
+          const JsonEncoder.withIndent('  ').convert({
+            '@guidance': {'invalidConfigSeen': true},
+            'proj-a': {'svc-1': true},
+          }),
+        );
+
+        final store = await PreferenceStore.load(prefsPath);
+
+        expect(store.ignoredDiscoveryProjects, isEmpty);
+        expect(store.invalidConfigGuidanceSeen, isTrue);
+        expect(store.isLoginStartEnabled('proj-a', 'svc-1'), isTrue);
+        expect(store.corruptionReport, isNull);
+      },
+    );
+
+    test('malformed @discovery entries are tolerated', () async {
+      File(prefsPath).writeAsStringSync(
+        const JsonEncoder.withIndent('  ').convert({
+          '@discovery': {
+            'ignored': ['proj-x', 42, '', 'proj-y'],
+          },
+        }),
+      );
+
+      final store = await PreferenceStore.load(prefsPath);
+
+      expect(store.ignoredDiscoveryProjects, {'proj-x', 'proj-y'});
+      expect(store.corruptionReport, isNull);
+    });
   });
 }

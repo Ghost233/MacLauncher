@@ -221,13 +221,20 @@ class ConfigRefresher {
       List.unmodifiable(_retained[projectId] ?? const []);
 
   /// Re-reads and applies the manifest for one bound project.
+  ///
+  /// Runtime bindings own no manifest and are skipped here; their service
+  /// set is maintained from each handshake via [applyRuntimeHello].
   Future<RefreshResult> refresh(String projectId) async {
     final binding = _store.byProjectId(projectId);
     if (binding == null) return const RefreshNotBound();
+    if (binding.origin == BindingOrigin.runtime) {
+      return const RefreshUnchanged();
+    }
 
     final ProjectManifest manifest;
     try {
-      manifest = await ProjectManifest.read(binding.manifestPath);
+      // Config bindings always carry a manifest path (store invariant).
+      manifest = await ProjectManifest.read(binding.manifestPath!);
     } on ManifestException catch (e) {
       final result = RefreshInvalid(e.reason, e.detail);
       _invalid[projectId] = result;
@@ -241,17 +248,58 @@ class ConfigRefresher {
       return RefreshIdentityMismatch(manifest.projectId);
     }
 
+    return _applyServices(
+      projectId,
+      binding,
+      manifest.services,
+      manifest.projectName,
+    );
+  }
+
+  /// Applies the service set self-reported in a runtime binding's latest
+  /// handshake. Same semantics as a manifest refresh: newly declared
+  /// services join the binding, disappeared ones become retained read-only
+  /// records and their login-start preferences are pruned, and a service
+  /// that comes back stops being a leftover. Config bindings are skipped —
+  /// their manifest, not the handshake, decides their service set.
+  Future<RefreshResult> applyRuntimeHello(
+    String projectId,
+    List<ManifestService> services, {
+    String? projectName,
+  }) async {
+    final binding = _store.byProjectId(projectId);
+    if (binding == null) return const RefreshNotBound();
+    if (binding.origin != BindingOrigin.runtime) {
+      return const RefreshUnchanged();
+    }
+    return _applyServices(
+      projectId,
+      binding,
+      services,
+      projectName != null && projectName.isNotEmpty
+          ? projectName
+          : binding.name,
+    );
+  }
+
+  /// Shared diff core for manifest refreshes and runtime handshakes.
+  Future<RefreshResult> _applyServices(
+    String projectId,
+    ProjectBinding binding,
+    List<ManifestService> newServices,
+    String newName,
+  ) async {
     final oldById = {for (final s in binding.services) s.id: s};
-    final newById = {for (final s in manifest.services) s.id: s};
+    final newById = {for (final s in newServices) s.id: s};
     final added = [
-      for (final s in manifest.services)
+      for (final s in newServices)
         if (!oldById.containsKey(s.id)) s,
     ];
     final removed = [
       for (final s in binding.services)
         if (!newById.containsKey(s.id)) s,
     ];
-    final nameChanged = manifest.projectName != binding.name;
+    final nameChanged = newName != binding.name;
 
     if (added.isEmpty && removed.isEmpty && !nameChanged) {
       // A previously invalid configuration that now matches the binding is
@@ -263,11 +311,13 @@ class ConfigRefresher {
     await _store.replace(
       ProjectBinding(
         projectId: binding.projectId,
-        name: manifest.projectName,
+        name: newName,
         manifestPath: binding.manifestPath,
-        services: manifest.services,
+        services: newServices,
         // The stable record: preferences and run history hang off it.
         boundAt: binding.boundAt,
+        origin: binding.origin,
+        learnedEntry: binding.learnedEntry,
       ),
     );
 

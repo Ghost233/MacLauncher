@@ -6,6 +6,27 @@ import 'dart:math';
 import 'protocol/codec.dart';
 import 'protocol/messages.dart';
 import 'request_dedup.dart';
+import 'entry_report.dart';
+
+/// Builds the hello handshake message. Top-level and pure so tests can
+/// assert the wire shape without opening a socket. Optional runtime
+/// discovery fields ([projectName], [entry]) are omitted when absent so
+/// older launchers see a message identical to the pre-discovery shape.
+Map<String, Object?> buildHelloMessage({
+  required String projectId,
+  required String appSessionId,
+  required CapabilitySet capabilities,
+  String? projectName,
+  SdkEntry? entry,
+}) => {
+  'type': 'hello',
+  'protocolVersion': kProtocolVersion,
+  'projectId': projectId,
+  'appSessionId': appSessionId,
+  'capabilities': capabilities.toJson(),
+  'projectName': ?projectName,
+  if (entry != null) 'entry': entry.toJson(),
+};
 
 /// Callbacks for one service. Only register what the application actually
 /// supports; the declared capability set is derived from the callbacks that
@@ -81,6 +102,8 @@ class SdkConnectionStatus {
 class MacLauncherSdk {
   MacLauncherSdk._({
     required this.projectId,
+    required this.projectName,
+    required this.entry,
     required this._services,
     required this._app,
     required this._socketPath,
@@ -95,10 +118,20 @@ class MacLauncherSdk {
   /// Connects to the launcher listener and keeps the connection alive across
   /// launcher restarts. Returns immediately; the connection runs in the
   /// background and never blocks the application's own operation.
+  ///
+  /// [projectName] and [entry] are self-reported for runtime discovery:
+  /// when the project is not associated yet, the launcher shows a pending
+  /// approval card built from these fields and rejects the handshake with
+  /// `pending-approval`. A rejection with that reason is not an error — the
+  /// SDK keeps retrying every [retryInterval] and the handshake succeeds
+  /// once the user approves. Applications should keep retrying silently and
+  /// must not treat `pending-approval` as a misconfiguration.
   static MacLauncherSdk connect({
     required String projectId,
     required Map<String, ServiceCallbacks> services,
     AppCallbacks? app,
+    String? projectName,
+    SdkEntry? entry,
     String? socketPath,
     Duration retryInterval = const Duration(seconds: 5),
     Duration pingInterval = const Duration(seconds: 5),
@@ -106,6 +139,8 @@ class MacLauncherSdk {
   }) {
     return MacLauncherSdk._(
       projectId: projectId,
+      projectName: projectName,
+      entry: entry,
       services: services,
       app: app,
       socketPath: socketPath ?? defaultSocketPath(),
@@ -122,6 +157,16 @@ class MacLauncherSdk {
   }
 
   final String projectId;
+
+  /// Self-reported display name for runtime discovery; null when the
+  /// application did not provide one (the launcher falls back to
+  /// [projectId] for display).
+  final String? projectName;
+
+  /// Self-reported launch entry for runtime discovery; null when the
+  /// application does not declare how it may be started.
+  final SdkEntry? entry;
+
   final Map<String, ServiceCallbacks> _services;
   final AppCallbacks? _app;
   final String _socketPath;
@@ -223,13 +268,16 @@ class MacLauncherSdk {
 
   Future<void> _serve(Socket socket) async {
     final sink = socket;
-    writeMessage(sink, {
-      'type': 'hello',
-      'protocolVersion': kProtocolVersion,
-      'projectId': projectId,
-      'appSessionId': _appSessionId,
-      'capabilities': capabilities.toJson(),
-    });
+    writeMessage(
+      sink,
+      buildHelloMessage(
+        projectId: projectId,
+        appSessionId: _appSessionId,
+        capabilities: capabilities,
+        projectName: projectName,
+        entry: entry,
+      ),
+    );
 
     final welcome = Completer<Map<String, Object?>>();
     final done = Completer<void>();

@@ -8,5 +8,6 @@ export 'src/client.dart'
         SdkConnectionState,
         SdkConnectionStatus,
         ServiceCallbacks;
+export 'src/entry_report.dart' show SdkEntry, SdkEntryKind;
 export 'src/protocol/codec.dart' show decodeMessages, writeMessage;
 export 'src/protocol/messages.dart';

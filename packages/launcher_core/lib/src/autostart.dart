@@ -83,36 +83,43 @@ class AutostartNotifier {
       final enabled = _preferences.enabledServices(binding.projectId);
       if (enabled.isEmpty) continue;
 
-      // The current manifest decides: invalid or missing configuration
-      // blocks notification; a removed declaration is no longer a target.
-      ProjectManifest manifest;
-      try {
-        manifest = await ProjectManifest.read(binding.manifestPath);
-      } on ManifestException catch (e) {
-        for (final serviceId in enabled) {
-          skipped.add(
-            AutostartSkip(
-              projectId: binding.projectId,
-              serviceId: serviceId,
-              reason: 'manifest unusable: ${e.reason}',
-            ),
-          );
+      final Set<String> declared;
+      if (binding.origin == BindingOrigin.runtime) {
+        // Runtime bindings own no manifest: the binding record itself
+        // (refreshed from each handshake) is the declaration source.
+        declared = {for (final s in binding.services) s.id};
+      } else {
+        // The current manifest decides: invalid or missing configuration
+        // blocks notification; a removed declaration is no longer a target.
+        ProjectManifest manifest;
+        try {
+          manifest = await ProjectManifest.read(binding.manifestPath!);
+        } on ManifestException catch (e) {
+          for (final serviceId in enabled) {
+            skipped.add(
+              AutostartSkip(
+                projectId: binding.projectId,
+                serviceId: serviceId,
+                reason: 'manifest unusable: ${e.reason}',
+              ),
+            );
+          }
+          continue;
         }
-        continue;
-      }
-      if (manifest.projectId != binding.projectId) {
-        for (final serviceId in enabled) {
-          skipped.add(
-            AutostartSkip(
-              projectId: binding.projectId,
-              serviceId: serviceId,
-              reason: 'manifest identity mismatch: ${manifest.projectId}',
-            ),
-          );
+        if (manifest.projectId != binding.projectId) {
+          for (final serviceId in enabled) {
+            skipped.add(
+              AutostartSkip(
+                projectId: binding.projectId,
+                serviceId: serviceId,
+                reason: 'manifest identity mismatch: ${manifest.projectId}',
+              ),
+            );
+          }
+          continue;
         }
-        continue;
+        declared = {for (final s in manifest.services) s.id};
       }
-      final declared = {for (final s in manifest.services) s.id};
 
       for (final serviceId in enabled) {
         if (!declared.contains(serviceId)) {

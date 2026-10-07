@@ -1,9 +1,21 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:maclauncher_sdk/maclauncher_sdk.dart';
+
 import 'binding_lookup.dart';
 import 'manifest.dart';
 import 'storage_corruption.dart';
+
+/// How a binding came to exist.
+enum BindingOrigin {
+  /// Associated from a `maclauncher.json` configuration file.
+  config,
+
+  /// Approved from a live runtime handshake (socket self-discovery); the
+  /// project owns no configuration file.
+  runtime,
+}
 
 /// A registered association between a project and its manifest, kept in the
 /// launcher's own local storage. Never written back into the project
@@ -12,40 +24,65 @@ class ProjectBinding {
   const ProjectBinding({
     required this.projectId,
     required this.name,
-    required this.manifestPath,
+    this.manifestPath,
     required this.services,
     required this.boundAt,
+    this.origin = BindingOrigin.config,
+    this.learnedEntry,
   });
 
   final String projectId;
   final String name;
 
-  /// Canonical absolute path of the associated maclauncher.json.
-  final String manifestPath;
+  /// Canonical absolute path of the associated maclauncher.json, or null for
+  /// [BindingOrigin.runtime] bindings, which own no configuration file.
+  final String? manifestPath;
 
   final List<ManifestService> services;
   final DateTime boundAt;
 
+  /// How this binding was created. Records written before runtime discovery
+  /// existed carry no `origin` field and load as [BindingOrigin.config].
+  final BindingOrigin origin;
+
+  /// Entry self-reported by the application over the handshake; only
+  /// meaningful for [BindingOrigin.runtime] bindings. May be null even for a
+  /// runtime binding: approval without an entry is allowed (observe/recycle
+  /// only). Refreshed from later handshakes when the app moves on disk.
+  final SdkEntry? learnedEntry;
+
   Map<String, Object?> toJson() => {
     'projectId': projectId,
     'name': name,
-    'manifestPath': manifestPath,
+    'manifestPath': ?manifestPath,
+    'origin': origin.name,
+    'learnedEntry': ?learnedEntry?.toJson(),
     'services': [for (final s in services) s.toJson()],
     'boundAt': boundAt.toUtc().toIso8601String(),
   };
 
-  static ProjectBinding fromJson(Map<String, Object?> json) => ProjectBinding(
-    projectId: json['projectId'] as String? ?? '',
-    name: json['name'] as String? ?? '',
-    manifestPath: json['manifestPath'] as String? ?? '',
-    services: [
-      for (final s in (json['services'] as List? ?? const []))
-        ManifestService.fromJson((s as Map).cast<String, Object?>()),
-    ],
-    boundAt:
-        DateTime.tryParse(json['boundAt'] as String? ?? '')?.toUtc() ??
-        DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-  );
+  static ProjectBinding fromJson(Map<String, Object?> json) {
+    final rawPath = json['manifestPath'] as String?;
+    final learned = json['learnedEntry'];
+    return ProjectBinding(
+      projectId: json['projectId'] as String? ?? '',
+      name: json['name'] as String? ?? '',
+      manifestPath: rawPath == null || rawPath.isEmpty ? null : rawPath,
+      origin: json['origin'] == 'runtime'
+          ? BindingOrigin.runtime
+          : BindingOrigin.config,
+      learnedEntry: learned is Map
+          ? SdkEntry.fromJson(learned.cast<String, Object?>())
+          : null,
+      services: [
+        for (final s in (json['services'] as List? ?? const []))
+          ManifestService.fromJson((s as Map).cast<String, Object?>()),
+      ],
+      boundAt:
+          DateTime.tryParse(json['boundAt'] as String? ?? '')?.toUtc() ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+    );
+  }
 }
 
 /// Local, launcher-owned store of project bindings.
@@ -90,12 +127,15 @@ class BindingStore implements BindingLookup {
   }
 
   /// A record is usable only when it parses and carries a project identity
-  /// plus a manifest path; anything less is damage, not a binding.
+  /// and — for config bindings — a manifest path; runtime bindings own no
+  /// path by design. Anything less is damage, not a binding.
   static ProjectBinding? _tryParseBinding(Object? element) {
     try {
       if (element is! Map) return null;
       final binding = ProjectBinding.fromJson(element.cast<String, Object?>());
-      if (binding.projectId.isEmpty || binding.manifestPath.isEmpty) {
+      if (binding.projectId.isEmpty) return null;
+      if (binding.origin == BindingOrigin.config &&
+          binding.manifestPath == null) {
         return null;
       }
       return binding;
@@ -117,8 +157,9 @@ class BindingStore implements BindingLookup {
     if (byProjectId(binding.projectId) != null) {
       throw StateError('duplicate project identity: ${binding.projectId}');
     }
-    if (byManifestPath(binding.manifestPath) != null) {
-      throw StateError('duplicate manifest path: ${binding.manifestPath}');
+    final path = binding.manifestPath;
+    if (path != null && byManifestPath(path) != null) {
+      throw StateError('duplicate manifest path: $path');
     }
     _bindings.add(binding);
     await _save();
@@ -196,7 +237,8 @@ class BindingStore implements BindingLookup {
       // two bindings with the same identity.
       throw ManifestException(
         ManifestRejection.invalidStructure,
-        'project identity already bound at ${byId.manifestPath}',
+        'project identity already bound at '
+        '${byId.manifestPath ?? '(runtime binding, no manifest)'}',
       );
     }
 

@@ -6,6 +6,7 @@ import 'package:launcher_core/launcher_core.dart';
 import 'package:maclauncher_sdk/maclauncher_sdk.dart';
 
 import 'live_debug.dart';
+import 'pending_section.dart';
 import 'project_card.dart';
 import 'self_update_dialog.dart';
 import 'self_update_flow.dart';
@@ -65,8 +66,21 @@ Future<void> main() async {
   EntryHandoffCoordinator? handoff;
   UnbindFlow? unbindFlow;
   Object? error;
+  // Runtime self-discovery (#45): unknown handshakes land in this in-memory
+  // registry as 待批准 unless the project is bound or ignored.
+  final pending = PendingRegistry();
+  final approval = DiscoveryApproval(bindings: bindings, pending: pending);
   try {
-    server = await LauncherServer.start(layout: layout, bindings: bindings);
+    server = await LauncherServer.start(
+      layout: layout,
+      bindings: bindings,
+      discovery: DiscoveryConfig(
+        pending: pending,
+        isIgnored: prefs.ignoredDiscoveryProjects.contains,
+        peerProbe: () => probePeerProcessPath(layout.socketPath),
+      ),
+      runtimeSync: RuntimeBindingSync(bindings: bindings, refresher: refresher),
+    );
     final orchestrator = LaunchOrchestrator(server: server, store: bindings);
     operations = ServiceOperations(
       server: server,
@@ -129,6 +143,8 @@ Future<void> main() async {
       operations: operations,
       handoff: handoff,
       unbindFlow: unbindFlow,
+      pending: pending,
+      approval: approval,
       updateService: AppUpdateService(layout: layout),
       selfUpdateFlow: selfUpdateFlow,
       corruptionReports: corruptionReports,
@@ -147,6 +163,8 @@ class MacLauncherApp extends StatelessWidget {
     this.operations,
     this.handoff,
     this.unbindFlow,
+    this.pending,
+    this.approval,
     this.updateService,
     this.selfUpdateFlow,
     this.corruptionReports = const [],
@@ -160,6 +178,11 @@ class MacLauncherApp extends StatelessWidget {
   final ServiceOperations? operations;
   final EntryHandoffCoordinator? handoff;
   final UnbindFlow? unbindFlow;
+
+  /// 待批准注册表与批准编排（#45 运行时发现）；缺省（测试）时待批准区
+  /// 不渲染。
+  final PendingRegistry? pending;
+  final DiscoveryApproval? approval;
   final AppUpdateService? updateService;
   final SelfUpdateFlow? selfUpdateFlow;
 
@@ -180,6 +203,8 @@ class MacLauncherApp extends StatelessWidget {
       operations: operations,
       handoff: handoff,
       unbindFlow: unbindFlow,
+      pending: pending,
+      approval: approval,
       updateService: updateService,
       selfUpdateFlow: selfUpdateFlow,
       corruptionReports: corruptionReports,
@@ -200,6 +225,8 @@ class ManagementPage extends StatefulWidget {
     this.operations,
     this.handoff,
     this.unbindFlow,
+    this.pending,
+    this.approval,
     this.updateService,
     this.selfUpdateFlow,
     this.corruptionReports = const [],
@@ -213,6 +240,8 @@ class ManagementPage extends StatefulWidget {
   final ServiceOperations? operations;
   final EntryHandoffCoordinator? handoff;
   final UnbindFlow? unbindFlow;
+  final PendingRegistry? pending;
+  final DiscoveryApproval? approval;
   final AppUpdateService? updateService;
   final SelfUpdateFlow? selfUpdateFlow;
   final List<StorageCorruptionReport> corruptionReports;
@@ -226,6 +255,7 @@ class _ManagementPageState extends State<ManagementPage> {
 
   StreamSubscription<ConnectedProject?>? _registrySub;
   StreamSubscription<HandoffState>? _handoffSub;
+  StreamSubscription<List<PendingProject>>? _pendingSub;
   final Map<String, EntryHandoffStatus> _handoffStatus = {};
   String _loginItemStatus = 'unknown';
   bool _corruptionNoticeShown = false;
@@ -245,6 +275,14 @@ class _ManagementPageState extends State<ManagementPage> {
     _registrySub = widget.server?.registry.changes.listen((_) {
       if (mounted) setState(() {});
     });
+    final pending = widget.pending;
+    if (pending != null) {
+      _pendingSub = pending.changes.listen((_) {
+        if (mounted) setState(() {});
+        _syncPendingMenuHint();
+      });
+      _syncPendingMenuHint();
+    }
     final handoff = widget.handoff;
     if (handoff != null) {
       _handoffSub = handoff.states.listen((state) {
@@ -286,7 +324,19 @@ class _ManagementPageState extends State<ManagementPage> {
     widget.selfUpdateFlow?.removeListener(_syncSelfUpdateDialog);
     _registrySub?.cancel();
     _handoffSub?.cancel();
+    _pendingSub?.cancel();
     super.dispose();
+  }
+
+  /// 菜单栏最小提示（#49）：有待批准时托盘菜单顶部出现一行说明。
+  /// 通道缺失（测试）时静默。
+  void _syncPendingMenuHint() {
+    final count = widget.pending?.projects.length ?? 0;
+    unawaited(
+      _native
+          .invokeMethod<void>('setPendingDiscoveryCount', count)
+          .catchError((_) {}),
+    );
   }
 
   EntryHandoffStatus handoffStatusOf(String projectId) =>
@@ -415,13 +465,17 @@ class _ManagementPageState extends State<ManagementPage> {
     // 「作为新项目」的效果只有语境差别：修复语境指向失效项目本身，关联
     // 语境指向进入的配置。
     final asNewProject = repair ? '作为新项目会为它生成新的项目身份。' : '作为新项目会为进入的配置生成新的项目身份。';
+    // runtime 绑定没有配置文件路径，决策点③仍走这个冲突弹窗。
+    final existingLocation = existing.manifestPath != null
+        ? '另一路径：\n${existing.manifestPath}\n'
+        : '（运行时自发现关联，无配置文件）\n';
     final message = switch (conflict.kind) {
       AssociationConflictKind.identityBoundToOtherPath =>
         repair
             ? '这份配置与失效的项目是同一身份（原路径：\n${existing.manifestPath}\n）。\n\n'
                   '迁移原绑定会把绑定（含偏好）移到新路径，找回配置；'
                   '$asNewProject'
-            : '相同的项目身份已在另一路径绑定：\n${existing.manifestPath}\n\n'
+            : '相同的项目身份已在$existingLocation\n'
                   '迁移会把原绑定（含偏好）移到新路径；$asNewProject',
       AssociationConflictKind.pathBoundToOtherIdentity =>
         repair
@@ -497,6 +551,66 @@ class _ManagementPageState extends State<ManagementPage> {
     }
     if (!mounted) return;
     setState(() {});
+  }
+
+  /// 批准待批准项目（#45）：确认对话框核对身份与来源；无 entry 时注明
+  /// 仅观察与回收（决策点1）。落库由 DiscoveryApproval 编排（entry 校验、
+  /// 失败保留 pending），页面只给提示。
+  Future<void> _approve(PendingProject project) async {
+    final approval = widget.approval;
+    if (approval == null) return;
+    final entry = project.entry;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('批准关联'),
+        content: Text(
+          '批准「${project.displayName}」（${project.projectId}）与启动器关联？\n\n'
+          '来源进程：${project.sourceProcessPath ?? '未知'}\n'
+          '入口：${entry?.path ?? '无'}'
+          '${entry == null ? '\n\n该应用未自报入口：启动器将不能拉起该应用，仅可观察与回收。' : ''}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('批准'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || confirmed != true) return;
+    try {
+      await approval.approve(project.projectId);
+      if (!mounted) return;
+      setState(() {});
+      _toast('已批准关联：${project.displayName}');
+    } on DiscoveryApprovalException catch (e) {
+      if (!mounted) return;
+      await _alert('无法批准关联', e.detail);
+    } catch (e) {
+      if (!mounted) return;
+      await _alert('无法批准关联', '$e');
+    }
+  }
+
+  /// 忽略待批准项目：加入忽略列表（持久化）并从注册表移除；此后的握手
+  /// 静默拒绝，不再出现在待批准区，直到设置页恢复。
+  Future<void> _ignore(PendingProject project) async {
+    try {
+      await widget.preferences.setDiscoveryIgnored(project.projectId, true);
+    } catch (e) {
+      if (!mounted) return;
+      await _alert('忽略失败', '$e');
+      return;
+    }
+    widget.pending?.remove(project.projectId);
+    if (!mounted) return;
+    setState(() {});
+    _toast('已忽略「${project.displayName}」，可在设置中恢复。');
   }
 
   /// 解除绑定：确认对话框只有一个动作——「保留运行并解除绑定」。
@@ -620,6 +734,8 @@ class _ManagementPageState extends State<ManagementPage> {
   Widget build(BuildContext context) {
     final registry = widget.server?.registry;
     final bindings = widget.bindings.bindings;
+    final pendingProjects =
+        widget.pending?.projects ?? const <PendingProject>[];
     _maybeShowInvalidGuidance();
     return Scaffold(
       appBar: AppBar(
@@ -678,7 +794,7 @@ class _ManagementPageState extends State<ManagementPage> {
                 ),
               ),
             )
-          : bindings.isEmpty
+          : bindings.isEmpty && pendingProjects.isEmpty
           ? Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -704,6 +820,11 @@ class _ManagementPageState extends State<ManagementPage> {
                 child: ListView(
                   padding: const EdgeInsets.all(AppTheme.gapLg),
                   children: [
+                    PendingSection(
+                      projects: pendingProjects,
+                      onApprove: _approve,
+                      onIgnore: _ignore,
+                    ),
                     for (final binding in bindings)
                       Padding(
                         padding: const EdgeInsets.only(bottom: AppTheme.gapLg),
