@@ -17,6 +17,8 @@ export 'src/launch_orchestrator.dart';
 export 'src/log_view_model.dart';
 export 'src/manifest.dart';
 export 'src/operations.dart';
+export 'src/peer_process.dart';
+export 'src/pending_registry.dart';
 export 'src/preferences.dart';
 export 'src/registry.dart';
 export 'src/self_update_service.dart';
