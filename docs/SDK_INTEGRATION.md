@@ -25,7 +25,7 @@ dependencies:
 import 'package:maclauncher_sdk/maclauncher_sdk.dart';
 
 final sdk = MacLauncherSdk.connect(
-  projectId: 'your-project-id',   // 必须与 maclauncher.json 的 project.id 一致
+  projectId: 'your-project-id',   // 稳定唯一的项目身份；配置文件路径下须与 maclauncher.json 的 project.id 一致
   services: {
     'web': ServiceCallbacks(
       name: 'Web 服务',
@@ -50,14 +50,21 @@ await sdk.dispose();
 
 ## 前提：项目关联
 
-SDK 连接成功不等于被接受。启动器只接受**已关联项目**的连接：
+SDK 连接成功不等于被接受。关联有两条路径：
 
-1. 项目目录放置 `maclauncher.json`（schemaVersion 1，见
-   [PROJECT_ASSOCIATION.md](PROJECT_ASSOCIATION.md)）；
-2. 在启动器中「关联项目」选择该文件；
-3. SDK 的 `projectId` 必须与配置里的 `project.id` 一致，`services` 的键
-   必须与配置里的服务 id 一致——不一致会在握手时被拒绝
-   （`SdkConnectionState.rejected`，reason 说明原因）。
+1. **运行时发现（免配置，推荐）**：SDK 握手时自报 `projectName` 与可选
+   `entry`（见下文「自报项目信息」），项目出现在启动器的待批准列表，
+   用户点一次「批准」即完成关联，全程无需配置文件。批准前握手按
+   `pending-approval` 拒绝，SDK 自动重连重试属正常。
+2. **配置文件（可选增强）**：项目目录放置 `maclauncher.json`（schemaVersion 1，
+   见 [PROJECT_ASSOCIATION.md](PROJECT_ASSOCIATION.md)），在启动器中
+   「关联项目」选择该文件。SDK 的 `projectId` 必须与配置里的
+   `project.id` 一致，`services` 的键必须与配置里的服务 id 一致——
+   不一致会在握手时被拒绝（`SdkConnectionState.rejected`，reason 说明
+   原因）。配置文件提供稳定的服务清单、完整拉起命令与配置刷新。
+
+被用户加入忽略列表的项目，握手静默拒绝且不出现在待批准；在启动器
+设置页移除后恢复。
 
 ## 能力声明
 
@@ -68,6 +75,27 @@ SDK 连接成功不等于被接受。启动器只接受**已关联项目**的连
 应用级能力通过 `AppCallbacks` 声明（见下文「窗口与入口协作」与
 「版本状况查询」），方法常量：`kMethodOpenWindow`、`kMethodSetEntryManaged`、
 `kMethodVersionStatus`。
+
+## 自报项目信息（运行时发现）
+
+```dart
+final sdk = MacLauncherSdk.connect(
+  projectId: 'your-project-id',
+  projectName: '我的应用',             // 可选：待批准卡片与绑定的显示名
+  entry: SdkEntry.currentAppBundle(),  // 可选：自报拉起入口
+  services: { /* ... */ },
+);
+```
+
+- `SdkEntry.appBundle(path)` / `SdkEntry.executable(path, args:, workingDirectory:)`
+  显式指定入口；`SdkEntry.currentAppBundle()` /
+  `SdkEntry.currentExecutable()` 从当前进程路径推断。入口允许完整启动
+  命令（args、工作目录），批准后即可被启动器拉起。
+- 未自报 `entry` 也能被批准：启动器仅观察与回收，不能拉起该应用。
+- 运行时绑定的服务清单由握手自报驱动：下次连接增删服务自动同步
+  （被删除的声明在启动器中保留只读记录）。
+- 入口路径失效（应用被移动/删除）时，启动器卡片显示「入口失效」；
+  应用重新运行并连接后，自报自动修复绑定里的入口。
 
 ## 回调契约
 
@@ -154,13 +182,15 @@ AppCallbacks(
 
 - `MacLauncherSdk.connect(...)` 立即返回，内部自动连接与重连
   （默认 `retryInterval: 5s`）；启动器未运行时静默等待，无需自己重试。
-- `states` 广播流：`disconnected / connecting / connected / rejected`
-  （`rejected` 带拒绝原因，如未关联、身份冲突）。
+- `states` 广播流：`disconnected / connecting / connected / rejected`。
+  `rejected` 的常见原因：`pending-approval`（等待用户在启动器里批准，
+  持续重试属正常，不要提示用户）、未关联（绑定不存在）、身份冲突。
 - **解除绑定的表现**：用户在启动器里解除绑定后，在线应用会先收到
   `setEntryManaged(false)` 归还入口，随后会话被主动关闭；SDK 的自动重连
-  会以「未关联」持续被拒（`rejected` 按重连间隔反复出现）。接入方应将
-  **持续 rejected（未关联）视为绑定已解除**：提示用户重新关联，或停止
-  等待并退回独立运行，不要无限静默重试。
+  会重新进入待批准，以 `pending-approval` 被拒（除非用户已把项目加入
+  忽略列表，则为静默拒绝）。用户再次「批准」即可恢复关联。接入方应将
+  **持续 rejected 视为绑定已解除**：提示用户到启动器里处理（批准、忽略
+  或重新关联配置），或停止等待并退回独立运行，不要无限静默重试。
 - 内置 ping/pong 看门狗（5s 心跳，15s 超时判定死亡并触发重连）。
 - `dispose()`：停止重连、销毁在途连接；可中断重试中的等待，调用后
   实例不可复用。
