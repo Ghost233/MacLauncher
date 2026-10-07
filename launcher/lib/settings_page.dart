@@ -43,12 +43,31 @@ class _SettingsPageState extends State<SettingsPage> {
   /// legacy [SettingsPage.onCheckNow] placeholder path is in use.
   UpdateCheckResult? _checkResult;
 
+  /// 忽略列表（#45 运行时发现）：本地状态与偏好存储同步，恢复即移除。
+  late Set<String> _ignoredDiscovery;
+
   @override
   void initState() {
     super.initState();
     _checkOnLaunch = widget.preferences.updateCheckOnLaunch;
     _autoDownload = widget.preferences.updateAutoDownload;
     _autoInstall = widget.preferences.updateAutoInstall;
+    _ignoredDiscovery = widget.preferences.ignoredDiscoveryProjects;
+  }
+
+  /// 恢复一个被忽略的自发现应用：它下次连接时重新出现在待批准中。
+  Future<void> _restoreIgnored(String projectId) async {
+    setState(
+      () => _ignoredDiscovery = {..._ignoredDiscovery}..remove(projectId),
+    );
+    try {
+      await widget.preferences.setDiscoveryIgnored(projectId, false);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _ignoredDiscovery = {..._ignoredDiscovery, projectId});
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('偏好保存失败，请重试。')));
+    }
   }
 
   /// Optimistic toggle: apply immediately so the switch never feels stuck,
@@ -253,6 +272,50 @@ class _SettingsPageState extends State<SettingsPage> {
                   ],
                 ),
               ),
+              if (_ignoredDiscovery.isNotEmpty) ...[
+                const SizedBox(height: AppTheme.gapLg),
+                Container(
+                  decoration: AppTheme.cardDecoration(),
+                  padding: const EdgeInsets.all(AppTheme.gapLg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('运行时发现', style: AppTheme.sectionLabel),
+                      const SizedBox(height: AppTheme.gapXs),
+                      const Text(
+                        '已忽略的应用连接时不再提示。恢复后，该应用下次连接时会重新出现在待批准中。',
+                        style: AppTheme.captionMuted,
+                      ),
+                      const SizedBox(height: AppTheme.gapMd),
+                      for (final projectId in _ignoredDiscovery)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(projectId, style: AppTheme.monoMuted),
+                            ),
+                            TextButton(
+                              key: ValueKey('restore-ignored/$projectId'),
+                              onPressed: () => _restoreIgnored(projectId),
+                              style: TextButton.styleFrom(
+                                foregroundColor: AppTheme.accent,
+                                textStyle: const TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                minimumSize: const Size(0, 30),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                ),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: const Text('恢复'),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),

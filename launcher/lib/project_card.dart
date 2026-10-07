@@ -59,6 +59,14 @@ class ProjectCard extends StatelessWidget {
     final canOpenWindow = capabilities?.supportsApp(kMethodOpenWindow) ?? false;
     final invalid = refresher.invalidReason(binding.projectId);
     final retained = refresher.retainedServices(binding.projectId);
+    // Runtime bindings (#45): the learned entry can vanish from disk while
+    // the app is away. Surface it, never reclaim implicitly — the next run
+    // self-heals the entry via hello.
+    final learned = binding.learnedEntry;
+    final entryInvalid =
+        binding.origin == BindingOrigin.runtime && learned != null && !connected
+        ? entryInvalidReason(learned)
+        : null;
     return Container(
       decoration: AppTheme.cardDecoration(),
       child: Padding(
@@ -93,6 +101,14 @@ class ProjectCard extends StatelessWidget {
                     _ => AppTheme.neutralSoft,
                   },
                 ),
+                if (binding.origin == BindingOrigin.runtime) ...[
+                  const SizedBox(width: AppTheme.gapSm),
+                  const StatusPill(
+                    label: '运行时发现',
+                    color: AppTheme.accent,
+                    background: AppTheme.accentSoft,
+                  ),
+                ],
                 if (canOpenWindow) ...[
                   const SizedBox(width: AppTheme.gapSm),
                   TextButton.icon(
@@ -101,11 +117,12 @@ class ProjectCard extends StatelessWidget {
                     label: const Text('打开窗口'),
                   ),
                 ],
-                IconButton(
-                  tooltip: '刷新配置',
-                  onPressed: onRefreshConfig,
-                  icon: const Icon(Icons.sync),
-                ),
+                if (binding.origin == BindingOrigin.config)
+                  IconButton(
+                    tooltip: '刷新配置',
+                    onPressed: onRefreshConfig,
+                    icon: const Icon(Icons.sync),
+                  ),
                 if (onUnbind != null && invalid == null)
                   TextButton.icon(
                     onPressed: onUnbind,
@@ -123,6 +140,27 @@ class ProjectCard extends StatelessWidget {
             ),
             const SizedBox(height: AppTheme.gapXs),
             Text('项目标识：${binding.projectId}', style: AppTheme.monoMuted),
+            if (entryInvalid != null)
+              Padding(
+                padding: const EdgeInsets.only(top: AppTheme.gapSm),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      size: 14,
+                      color: AppTheme.warn,
+                    ),
+                    const SizedBox(width: AppTheme.gapSm),
+                    Expanded(
+                      child: Text(
+                        '入口失效：$entryInvalid。重新运行该应用即可自动修复。',
+                        style: AppTheme.caption.copyWith(color: AppTheme.warn),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             if (invalid != null)
               Container(
                 margin: const EdgeInsets.only(top: AppTheme.gapMd),

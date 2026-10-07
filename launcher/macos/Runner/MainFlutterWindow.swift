@@ -66,6 +66,11 @@ class MainFlutterWindow: NSWindow {
             message: "登录项需要 macOS 13 或更高版本",
             details: nil))
         }
+      case "setPendingDiscoveryCount":
+        // 待批准菜单行（#45）：管理窗口之外的唯一发现入口提示。
+        (NSApp.delegate as? AppDelegate)?.setPendingDiscoveryCount(
+          (call.arguments as? Int) ?? 0)
+        result(nil)
       case "appVersion":
         // The build channel for the launcher's own version: `flutter build`
         // injects the pubspec version into these Info.plist keys, so the UI

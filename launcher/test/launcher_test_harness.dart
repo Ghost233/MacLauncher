@@ -21,6 +21,8 @@ class LauncherTestHarness {
   ServiceOperations? _operations;
   EntryHandoffCoordinator? _handoff;
   UnbindFlow? _unbindFlow;
+  PendingRegistry? _pending;
+  DiscoveryApproval? _approval;
 
   String get projectDir => '${directory.path}/proj';
   String get manifestPath => '$projectDir/maclauncher.json';
@@ -29,6 +31,8 @@ class LauncherTestHarness {
   ServiceOperations get operations => _operations!;
   EntryHandoffCoordinator get handoff => _handoff!;
   UnbindFlow? get unbindFlow => _unbindFlow;
+  PendingRegistry get pending => _pending!;
+  DiscoveryApproval get approval => _approval!;
 
   static Future<LauncherTestHarness> create({
     Map<String, String> services = const {'svc-1': 'svc-1', 'svc-2': 'svc-2'},
@@ -90,6 +94,15 @@ class LauncherTestHarness {
     );
   }
 
+  /// Wires the discovery stack (#45): in-memory pending registry + approval
+  /// orchestration against the real binding store. No server needed — the
+  /// management page drives both directly.
+  void enableDiscovery() {
+    if (_pending != null) return;
+    _pending = PendingRegistry();
+    _approval = DiscoveryApproval(bindings: bindings, pending: _pending!);
+  }
+
   MacLauncherApp app() => MacLauncherApp(
     server: _server,
     bindings: bindings,
@@ -98,6 +111,8 @@ class LauncherTestHarness {
     operations: _operations,
     handoff: _handoff,
     unbindFlow: _unbindFlow,
+    pending: _pending,
+    approval: _approval,
   );
 
   /// Connects an SDK client for project-a and waits until the registry
@@ -118,6 +133,7 @@ class LauncherTestHarness {
 
   Future<void> dispose() async {
     _handoff?.dispose();
+    await _pending?.close();
     await _server?.close();
     if (directory.existsSync()) directory.deleteSync(recursive: true);
   }

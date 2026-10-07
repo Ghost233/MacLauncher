@@ -4,6 +4,8 @@ import FlutterMacOS
 @main
 class AppDelegate: FlutterAppDelegate {
   private var statusItem: NSStatusItem?
+  private var pendingDiscoveryItem: NSMenuItem?
+  private var pendingDiscoverySeparator: NSMenuItem?
   weak var mainWindow: NSWindow?
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
@@ -38,6 +40,31 @@ class AppDelegate: FlutterAppDelegate {
 
   @objc private func quitApp() {
     NSApp.terminate(nil)
+  }
+
+  /// 待批准菜单行（#45 运行时发现，最小实现）：有待批准应用时托盘菜单
+  /// 顶部出现一行，点击打开管理窗口；清零时移除。
+  func setPendingDiscoveryCount(_ count: Int) {
+    guard let menu = statusItem?.menu else { return }
+    if count > 0 {
+      let title = "有待批准的应用（\(count)）"
+      if let item = pendingDiscoveryItem {
+        item.title = title
+      } else {
+        let item = NSMenuItem(
+          title: title, action: #selector(showMainWindow), keyEquivalent: "")
+        menu.insertItem(item, at: 0)
+        let separator = NSMenuItem.separator()
+        menu.insertItem(separator, at: 1)
+        pendingDiscoveryItem = item
+        pendingDiscoverySeparator = separator
+      }
+    } else {
+      if let item = pendingDiscoveryItem { menu.removeItem(item) }
+      if let separator = pendingDiscoverySeparator { menu.removeItem(separator) }
+      pendingDiscoveryItem = nil
+      pendingDiscoverySeparator = nil
+    }
   }
 
   // Closing the management window never quits the launcher and never implies
