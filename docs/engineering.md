@@ -39,7 +39,7 @@ Flutter 应用位于 `launcher/`，纯 Dart 核心与 SDK 位于 `packages/`，�
 
 根 workspace 包含 Flutter 成员，因此 Dart 测试使用 Flutter 自带的 Dart 入口，以传递 SDK 上下文。检查涵盖 SDK、核心、受控示例和 Flutter 应用；`test` 分别运行核心/SDK 的真实 socket 测试与 Flutter widget 测试。依赖与通用测试按所选本机或容器流程运行；Mac 构建、菜单栏、登录项和原生桥接另做 Mac 联调。
 
-在 macOS 上，`test` 还运行 `scripts/test-macos-window.sh`，编译生产窗口与委托，验证管理窗口关闭后恢复菜单栏激活策略、应用继续运行，并可再次打开窗口。其他平台跳过这项 AppKit 检查；可单独运行该脚本进行窗口缺陷的定点验证。
+在 macOS 上，`test` 还运行 `scripts/test-macos-window.sh`，编译生产窗口与委托，经菜单栏目标动作验证打开管理窗口时显示 Dock 入口、关闭后恢复菜单栏激活策略、应用继续运行，并可再次打开窗口。其他平台跳过这项 AppKit 检查；可单独运行该脚本进行窗口缺陷的定点验证。
 
 **不要在 packages/ 或 example/ 下直接调 `flutter test`**：它用 frontend_server 编译路径，`dart:isolate` 的部分 API（如 `Isolate.resolvePackageUriSync`）在其中不受支持，测试会在加载期失败或挂起。所有测试统一经 `./scripts/check-flutter.sh test`（核心/SDK 走 dart test，launcher 走 flutter test）。
 

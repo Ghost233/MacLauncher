@@ -12,7 +12,7 @@ class AppDelegate: FlutterAppDelegate {
   private var readyToTerminate = false
 
   override func applicationDidFinishLaunching(_ notification: Notification) {
-    // Menu-bar resident: no Dock icon, no forced main window.
+    // Start in menu-bar mode without opening a management window.
     NSApp.setActivationPolicy(.accessory)
 
     let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -36,6 +36,8 @@ class AppDelegate: FlutterAppDelegate {
   @objc private func showMainWindow() {
     let window = mainWindow ?? NSApp.windows.first { $0 is MainFlutterWindow }
     if let window {
+      // Show the Dock entry while the management window is open.
+      NSApp.setActivationPolicy(.regular)
       window.makeKeyAndOrderFront(nil)
       NSApp.activate(ignoringOtherApps: true)
     }
