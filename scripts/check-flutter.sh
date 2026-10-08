@@ -21,6 +21,9 @@ check_analysis() {
 check_tests() {
   "$dart_command" test packages/maclauncher_sdk/test packages/launcher_core/test
   (cd launcher && "$flutter_command" --suppress-analytics test --no-pub)
+  if [ "$(uname -s)" = "Darwin" ]; then
+    FLUTTER_BIN="$flutter_command" "$workspace_root/scripts/test-macos-window.sh"
+  fi
 }
 
 case "${1:-check}" in

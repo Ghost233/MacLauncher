@@ -10,6 +10,12 @@ class MainFlutterWindow: NSWindow {
   override var occlusionState: NSWindow.OcclusionState { .visible }
   #endif
 
+  override func close() {
+    super.close()
+    // Closing the optional window returns the launcher to menu-bar residency.
+    NSApp.setActivationPolicy(.accessory)
+  }
+
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
     let windowFrame = self.frame
