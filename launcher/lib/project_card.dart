@@ -81,9 +81,9 @@ class ProjectCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(child: Text(binding.name, style: AppTheme.cardTitle)),
+            CardHeader(
+              title: Text(binding.name, style: AppTheme.cardTitle),
+              actions: [
                 StatusPill(
                   label: connected ? '应用连接：已连接' : '应用连接：未连接',
                   color: connected ? AppTheme.ok : AppTheme.neutral,
@@ -91,7 +91,6 @@ class ProjectCard extends StatelessWidget {
                       ? AppTheme.okSoft
                       : AppTheme.neutralSoft,
                 ),
-                const SizedBox(width: AppTheme.gapSm),
                 StatusPill(
                   label: switch (handoffStatus) {
                     EntryHandoffStatus.managed => '统一入口：接管完成',
@@ -117,7 +116,6 @@ class ProjectCard extends StatelessWidget {
                   },
                 ),
                 if (binding.origin == BindingOrigin.runtime) ...[
-                  const SizedBox(width: AppTheme.gapSm),
                   const StatusPill(
                     label: '运行时发现',
                     color: AppTheme.accent,
@@ -125,7 +123,6 @@ class ProjectCard extends StatelessWidget {
                   ),
                 ],
                 if (canOpenWindow) ...[
-                  const SizedBox(width: AppTheme.gapSm),
                   TextButton.icon(
                     onPressed: onOpenWindow,
                     icon: const Icon(Icons.open_in_new, size: 14),
@@ -531,14 +528,12 @@ class _ServiceRowState extends State<ServiceRow> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '服务 ${widget.service.name}（${widget.service.id}）',
-                  style: AppTheme.serviceName,
-                ),
-              ),
+          CardHeader(
+            title: Text(
+              '服务 ${widget.service.name}（${widget.service.id}）',
+              style: AppTheme.serviceName,
+            ),
+            actions: [
               if (_pending)
                 const Padding(
                   padding: EdgeInsets.only(right: AppTheme.gapSm),
@@ -584,21 +579,25 @@ class _ServiceRowState extends State<ServiceRow> {
                 color: AppTheme.neutral,
                 onPressed: canLogs ? _openLogs : null,
               ),
-              const SizedBox(width: AppTheme.gapSm),
-              const Text('登录启动', style: AppTheme.captionMuted),
-              Transform.scale(
-                scale: 0.75,
-                child: Switch(
-                  value: loginStart,
-                  onChanged: (value) async {
-                    await widget.preferences.setLoginStartEnabled(
-                      widget.projectId,
-                      widget.service.id,
-                      value,
-                    );
-                    widget.onChanged();
-                  },
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('登录启动', style: AppTheme.captionMuted),
+                  Transform.scale(
+                    scale: 0.75,
+                    child: Switch(
+                      value: loginStart,
+                      onChanged: (value) async {
+                        await widget.preferences.setLoginStartEnabled(
+                          widget.projectId,
+                          widget.service.id,
+                          value,
+                        );
+                        widget.onChanged();
+                      },
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

@@ -33,6 +33,11 @@ abstract final class AppTheme {
   static const gapLg = 16.0;
   static const gapXl = 24.0;
 
+  static EdgeInsets pagePadding(BuildContext context) => EdgeInsets.symmetric(
+    horizontal: (MediaQuery.sizeOf(context).width * 0.025).clamp(gapMd, 40.0),
+    vertical: gapLg,
+  );
+
   // ---- type scale ----
   static const pageTitle = TextStyle(
     fontSize: 17,
@@ -137,6 +142,45 @@ abstract final class AppTheme {
       ),
     );
   }
+}
+
+/// Keeps card actions beside the title when there is room, and lets them
+/// wrap below it in a narrow window.
+class CardHeader extends StatelessWidget {
+  const CardHeader({super.key, required this.title, required this.actions});
+
+  final Widget title;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final controls = Wrap(
+        alignment: WrapAlignment.end,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: AppTheme.gapXs,
+        runSpacing: AppTheme.gapXs,
+        children: actions,
+      );
+      if (constraints.maxWidth < 680) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            title,
+            const SizedBox(height: AppTheme.gapSm),
+            controls,
+          ],
+        );
+      }
+      return Row(
+        children: [
+          Expanded(child: title),
+          const SizedBox(width: AppTheme.gapSm),
+          Expanded(flex: 2, child: controls),
+        ],
+      );
+    },
+  );
 }
 
 /// Small colored pill: dot + label. Used for connection/handoff/login-item

@@ -181,144 +181,136 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
-      body: Align(
-        alignment: Alignment.topCenter,
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 640),
-          child: ListView(
-            padding: const EdgeInsets.all(AppTheme.gapXl),
-            children: [
-              Container(
-                decoration: AppTheme.cardDecoration(),
-                padding: const EdgeInsets.all(AppTheme.gapLg),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      body: ListView(
+        padding: AppTheme.pagePadding(context),
+        children: [
+          Container(
+            decoration: AppTheme.cardDecoration(),
+            padding: const EdgeInsets.all(AppTheme.gapLg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('更新', style: AppTheme.sectionLabel),
+                const SizedBox(height: AppTheme.gapMd),
+                _SwitchRow(
+                  key: const ValueKey('update-check-on-launch'),
+                  label: '启动时检查新版本',
+                  value: _checkOnLaunch,
+                  onChanged: (value) => _toggle(
+                    value: value,
+                    persist: widget.preferences.setUpdateCheckOnLaunch,
+                    apply: (v) => _checkOnLaunch = v,
+                  ),
+                ),
+                _SwitchRow(
+                  key: const ValueKey('update-auto-download'),
+                  label: '自动下载新版本',
+                  value: _autoDownload,
+                  onChanged: (value) => _toggle(
+                    value: value,
+                    persist: widget.preferences.setUpdateAutoDownload,
+                    apply: (v) => _autoDownload = v,
+                  ),
+                ),
+                _SwitchRow(
+                  key: const ValueKey('update-auto-install'),
+                  label: '自动安装',
+                  value: _autoInstall,
+                  // Reserved preference (ADR 0002): stays disabled until
+                  // a signing certificate exists.
+                  onChanged: null,
+                  note: '需要签名证书，暂不可用',
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: AppTheme.gapMd),
+                  child: Divider(),
+                ),
+                Row(
                   children: [
-                    const Text('更新', style: AppTheme.sectionLabel),
-                    const SizedBox(height: AppTheme.gapMd),
-                    _SwitchRow(
-                      key: const ValueKey('update-check-on-launch'),
-                      label: '启动时检查新版本',
-                      value: _checkOnLaunch,
-                      onChanged: (value) => _toggle(
-                        value: value,
-                        persist: widget.preferences.setUpdateCheckOnLaunch,
-                        apply: (v) => _checkOnLaunch = v,
+                    FilledButton.icon(
+                      key: const ValueKey('update-check-now'),
+                      onPressed: _checking ? null : _checkNow,
+                      icon: _checking
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.system_update_alt, size: 16),
+                      label: const Text('立即检查更新'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppTheme.accent,
+                        foregroundColor: Colors.white,
+                        textStyle: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        minimumSize: const Size(0, 32),
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
                       ),
                     ),
-                    _SwitchRow(
-                      key: const ValueKey('update-auto-download'),
-                      label: '自动下载新版本',
-                      value: _autoDownload,
-                      onChanged: (value) => _toggle(
-                        value: value,
-                        persist: widget.preferences.setUpdateAutoDownload,
-                        apply: (v) => _autoDownload = v,
+                    const SizedBox(width: AppTheme.gapMd),
+                    const Expanded(
+                      child: Text(
+                        '手动检查启动器与已关联应用的新版本。',
+                        style: AppTheme.captionMuted,
                       ),
                     ),
-                    _SwitchRow(
-                      key: const ValueKey('update-auto-install'),
-                      label: '自动安装',
-                      value: _autoInstall,
-                      // Reserved preference (ADR 0002): stays disabled until
-                      // a signing certificate exists.
-                      onChanged: null,
-                      note: '需要签名证书，暂不可用',
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: AppTheme.gapMd),
-                      child: Divider(),
-                    ),
+                  ],
+                ),
+                if (_checkResult != null) ...[
+                  const SizedBox(height: AppTheme.gapSm),
+                  _checkResultArea(),
+                ],
+              ],
+            ),
+          ),
+          if (_ignoredDiscovery.isNotEmpty) ...[
+            const SizedBox(height: AppTheme.gapLg),
+            Container(
+              decoration: AppTheme.cardDecoration(),
+              padding: const EdgeInsets.all(AppTheme.gapLg),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('运行时发现', style: AppTheme.sectionLabel),
+                  const SizedBox(height: AppTheme.gapXs),
+                  const Text(
+                    '已忽略的应用连接时不再提示。恢复后，该应用下次连接时会重新出现在待批准中。',
+                    style: AppTheme.captionMuted,
+                  ),
+                  const SizedBox(height: AppTheme.gapMd),
+                  for (final projectId in _ignoredDiscovery)
                     Row(
                       children: [
-                        FilledButton.icon(
-                          key: const ValueKey('update-check-now'),
-                          onPressed: _checking ? null : _checkNow,
-                          icon: _checking
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Icon(Icons.system_update_alt, size: 16),
-                          label: const Text('立即检查更新'),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: AppTheme.accent,
-                            foregroundColor: Colors.white,
+                        Expanded(
+                          child: Text(projectId, style: AppTheme.monoMuted),
+                        ),
+                        TextButton(
+                          key: ValueKey('restore-ignored/$projectId'),
+                          onPressed: () => _restoreIgnored(projectId),
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppTheme.accent,
                             textStyle: const TextStyle(
-                              fontSize: 13,
+                              fontSize: 12.5,
                               fontWeight: FontWeight.w500,
                             ),
-                            minimumSize: const Size(0, 32),
-                            padding: const EdgeInsets.symmetric(horizontal: 14),
+                            minimumSize: const Size(0, 30),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                           ),
-                        ),
-                        const SizedBox(width: AppTheme.gapMd),
-                        const Expanded(
-                          child: Text(
-                            '手动检查启动器与已关联应用的新版本。',
-                            style: AppTheme.captionMuted,
-                          ),
+                          child: const Text('恢复'),
                         ),
                       ],
                     ),
-                    if (_checkResult != null) ...[
-                      const SizedBox(height: AppTheme.gapSm),
-                      _checkResultArea(),
-                    ],
-                  ],
-                ),
+                ],
               ),
-              if (_ignoredDiscovery.isNotEmpty) ...[
-                const SizedBox(height: AppTheme.gapLg),
-                Container(
-                  decoration: AppTheme.cardDecoration(),
-                  padding: const EdgeInsets.all(AppTheme.gapLg),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('运行时发现', style: AppTheme.sectionLabel),
-                      const SizedBox(height: AppTheme.gapXs),
-                      const Text(
-                        '已忽略的应用连接时不再提示。恢复后，该应用下次连接时会重新出现在待批准中。',
-                        style: AppTheme.captionMuted,
-                      ),
-                      const SizedBox(height: AppTheme.gapMd),
-                      for (final projectId in _ignoredDiscovery)
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(projectId, style: AppTheme.monoMuted),
-                            ),
-                            TextButton(
-                              key: ValueKey('restore-ignored/$projectId'),
-                              onPressed: () => _restoreIgnored(projectId),
-                              style: TextButton.styleFrom(
-                                foregroundColor: AppTheme.accent,
-                                textStyle: const TextStyle(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                minimumSize: const Size(0, 30),
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                ),
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
-                              child: const Text('恢复'),
-                            ),
-                          ],
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
+            ),
+          ],
+        ],
       ),
     );
   }

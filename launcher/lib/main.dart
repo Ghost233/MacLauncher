@@ -838,68 +838,59 @@ class _ManagementPageState extends State<ManagementPage> {
                 ],
               ),
             )
-          : Align(
-              alignment: Alignment.topCenter,
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 860),
-                child: ListView(
-                  padding: const EdgeInsets.all(AppTheme.gapLg),
-                  children: [
-                    PendingSection(
-                      projects: pendingProjects,
-                      onApprove: _approve,
-                      onIgnore: _ignore,
-                    ),
-                    for (final binding in bindings)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: AppTheme.gapLg),
-                        child: ProjectCard(
-                          binding: binding,
-                          registry: registry,
-                          operations: widget.operations,
-                          updateService: widget.updateService,
-                          preferences: widget.preferences,
-                          refresher: widget.refresher,
-                          handoffStatus: handoffStatusOf(binding.projectId),
-                          onMenuBarAllowedChanged: (allowed) => unawaited(
-                            _setMenuBarAllowed(binding.projectId, allowed),
-                          ),
-                          onRetryMenuBar: widget.handoff == null
-                              ? null
-                              : () => unawaited(
-                                  widget.handoff!.retry(binding.projectId),
-                                ),
-                          onOpenWindow: () async {
-                            final handoff = widget.handoff;
-                            if (handoff == null) return;
-                            final outcome = await handoff.openWindow(
-                              binding.projectId,
-                            );
-                            if (!context.mounted) return;
-                            _toast(switch (outcome) {
-                              HandoffRequestOutcome.acknowledged =>
-                                '已请求应用打开原窗口。',
-                              HandoffRequestOutcome.unsupported =>
-                                '应用未提供打开窗口能力。',
-                              HandoffRequestOutcome.unavailable => '应用未连接。',
-                              HandoffRequestOutcome.unknown => '结果未知：等待超时。',
-                            });
-                          },
-                          onRefreshConfig: () =>
-                              _refreshConfig(binding.projectId),
-                          onReselectConfig: () =>
-                              _reselectConfig(binding.projectId),
-                          onUnbind: widget.unbindFlow == null
-                              ? null
-                              : () => _unbind(binding),
-                          onClearRetained: (serviceId) =>
-                              _clearRetained(binding.projectId, serviceId),
-                          onChanged: () => setState(() {}),
-                        ),
-                      ),
-                  ],
+          : ListView(
+              padding: AppTheme.pagePadding(context),
+              children: [
+                PendingSection(
+                  projects: pendingProjects,
+                  onApprove: _approve,
+                  onIgnore: _ignore,
                 ),
-              ),
+                for (final binding in bindings)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: AppTheme.gapLg),
+                    child: ProjectCard(
+                      binding: binding,
+                      registry: registry,
+                      operations: widget.operations,
+                      updateService: widget.updateService,
+                      preferences: widget.preferences,
+                      refresher: widget.refresher,
+                      handoffStatus: handoffStatusOf(binding.projectId),
+                      onMenuBarAllowedChanged: (allowed) => unawaited(
+                        _setMenuBarAllowed(binding.projectId, allowed),
+                      ),
+                      onRetryMenuBar: widget.handoff == null
+                          ? null
+                          : () => unawaited(
+                              widget.handoff!.retry(binding.projectId),
+                            ),
+                      onOpenWindow: () async {
+                        final handoff = widget.handoff;
+                        if (handoff == null) return;
+                        final outcome = await handoff.openWindow(
+                          binding.projectId,
+                        );
+                        if (!context.mounted) return;
+                        _toast(switch (outcome) {
+                          HandoffRequestOutcome.acknowledged => '已请求应用打开原窗口。',
+                          HandoffRequestOutcome.unsupported => '应用未提供打开窗口能力。',
+                          HandoffRequestOutcome.unavailable => '应用未连接。',
+                          HandoffRequestOutcome.unknown => '结果未知：等待超时。',
+                        });
+                      },
+                      onRefreshConfig: () => _refreshConfig(binding.projectId),
+                      onReselectConfig: () =>
+                          _reselectConfig(binding.projectId),
+                      onUnbind: widget.unbindFlow == null
+                          ? null
+                          : () => _unbind(binding),
+                      onClearRetained: (serviceId) =>
+                          _clearRetained(binding.projectId, serviceId),
+                      onChanged: () => setState(() {}),
+                    ),
+                  ),
+              ],
             ),
     );
   }

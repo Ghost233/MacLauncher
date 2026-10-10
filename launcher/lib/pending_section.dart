@@ -72,11 +72,9 @@ class PendingProjectCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(project.displayName, style: AppTheme.cardTitle),
-                ),
+            CardHeader(
+              title: Text(project.displayName, style: AppTheme.cardTitle),
+              actions: [
                 FilledButton.tonalIcon(
                   onPressed: onApprove,
                   icon: const Icon(Icons.check_circle_outline, size: 14),
@@ -93,7 +91,6 @@ class PendingProjectCard extends StatelessWidget {
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                 ),
-                const SizedBox(width: AppTheme.gapXs),
                 TextButton(
                   onPressed: onIgnore,
                   style: TextButton.styleFrom(
