@@ -39,40 +39,24 @@ abstract final class AppTheme {
   );
 
   // ---- type scale ----
-  static const pageTitle = TextStyle(
-    fontSize: 17,
-    fontWeight: FontWeight.w600,
-    color: textPrimary,
-  );
-  static const cardTitle = TextStyle(
-    fontSize: 15,
-    fontWeight: FontWeight.w600,
-    color: textPrimary,
-  );
-  static const sectionLabel = TextStyle(
-    fontSize: 11,
-    fontWeight: FontWeight.w600,
-    letterSpacing: 0.6,
-    color: textTertiary,
-  );
-  static const serviceName = TextStyle(
-    fontSize: 13.5,
-    fontWeight: FontWeight.w600,
-    color: textPrimary,
-  );
-  static const body = TextStyle(fontSize: 13, color: textPrimary);
-  static const caption = TextStyle(fontSize: 12, color: textSecondary);
-  static const captionMuted = TextStyle(fontSize: 12, color: textTertiary);
-  static const mono = TextStyle(
-    fontFamily: 'monospace',
-    fontSize: 12,
-    color: textPrimary,
-  );
-  static const monoMuted = TextStyle(
-    fontFamily: 'monospace',
-    fontSize: 11,
-    color: textTertiary,
-  );
+  static TextStyle pageTitle(BuildContext context) =>
+      TextTheme.of(context).titleLarge!;
+  static TextStyle cardTitle(BuildContext context) =>
+      TextTheme.of(context).titleMedium!;
+  static TextStyle sectionLabel(BuildContext context) =>
+      TextTheme.of(context).labelSmall!;
+  static TextStyle serviceName(BuildContext context) =>
+      TextTheme.of(context).titleSmall!;
+  static TextStyle body(BuildContext context) =>
+      TextTheme.of(context).bodyLarge!;
+  static TextStyle caption(BuildContext context) =>
+      TextTheme.of(context).bodySmall!;
+  static TextStyle captionMuted(BuildContext context) =>
+      caption(context).copyWith(color: textTertiary);
+  static TextStyle mono(BuildContext context) =>
+      caption(context).copyWith(fontFamily: 'monospace', color: textPrimary);
+  static TextStyle monoMuted(BuildContext context) =>
+      captionMuted(context).copyWith(fontFamily: 'monospace', fontSize: 11);
 
   // ---- component styles ----
   static BoxDecoration cardDecoration() => BoxDecoration(
@@ -83,21 +67,53 @@ abstract final class AppTheme {
 
   static ThemeData material() {
     final base = ThemeData(useMaterial3: true);
+    final textTheme = base.textTheme.copyWith(
+      titleLarge: base.textTheme.titleLarge!.copyWith(
+        fontSize: 17,
+        fontWeight: FontWeight.w600,
+        color: textPrimary,
+      ),
+      titleMedium: base.textTheme.bodyMedium!.copyWith(
+        fontSize: 15,
+        fontWeight: FontWeight.w600,
+        color: textPrimary,
+      ),
+      labelSmall: base.textTheme.bodyMedium!.copyWith(
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.6,
+        color: textTertiary,
+      ),
+      titleSmall: base.textTheme.bodyMedium!.copyWith(
+        fontSize: 13.5,
+        fontWeight: FontWeight.w600,
+        color: textPrimary,
+      ),
+      bodyLarge: base.textTheme.bodyMedium!.copyWith(
+        fontSize: 13,
+        color: textPrimary,
+      ),
+      bodySmall: base.textTheme.bodyMedium!.copyWith(
+        fontSize: 12,
+        color: textSecondary,
+      ),
+    );
     return base.copyWith(
+      textTheme: textTheme,
       scaffoldBackgroundColor: background,
       colorScheme: ColorScheme.fromSeed(
         seedColor: accent,
         surface: surface,
       ).copyWith(surface: background),
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         backgroundColor: surface,
         foregroundColor: textPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
-        titleTextStyle: pageTitle,
+        titleTextStyle: textTheme.titleLarge,
         toolbarHeight: 52,
-        shape: Border(bottom: BorderSide(color: border)),
+        shape: const Border(bottom: BorderSide(color: border)),
       ),
       dividerTheme: const DividerThemeData(
         color: border,
@@ -107,13 +123,16 @@ abstract final class AppTheme {
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: textPrimary,
-        contentTextStyle: const TextStyle(fontSize: 13, color: Colors.white),
+        contentTextStyle: textTheme.bodyLarge!.copyWith(color: Colors.white),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: accent,
-          textStyle: const TextStyle(fontSize: 13),
+          textStyle: textTheme.labelLarge!.copyWith(
+            fontSize: 13,
+            fontWeight: FontWeight.w400,
+          ),
           minimumSize: const Size(0, 32),
           padding: const EdgeInsets.symmetric(horizontal: 10),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -216,7 +235,7 @@ class StatusPill extends StatelessWidget {
           const SizedBox(width: 5),
           Text(
             label,
-            style: TextStyle(
+            style: TextTheme.of(context).bodySmall!.copyWith(
               fontSize: 11.5,
               fontWeight: FontWeight.w500,
               color: color,

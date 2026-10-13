@@ -145,7 +145,8 @@ class _SettingsPageState extends State<SettingsPage> {
             Expanded(
               child: Text(
                 '发现新版本 $latestVersion。',
-                style: AppTheme.caption.copyWith(color: AppTheme.accent),
+                style: AppTheme.caption(context)
+                    .copyWith(color: AppTheme.accent),
               ),
             ),
             FilledButton(
@@ -165,10 +166,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 foregroundColor: Colors.white,
                 minimumSize: const Size(0, 28),
                 padding: const EdgeInsets.symmetric(horizontal: 12),
-                textStyle: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
+                textStyle: TextTheme.of(context).labelLarge!
+                    .copyWith(fontSize: 12, fontWeight: FontWeight.w500),
               ),
               child: const Text('下载新版本'),
             ),
@@ -180,7 +179,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('设置')),
+      appBar: AppBar(title: Text('设置', style: AppTheme.pageTitle(context))),
       body: ListView(
         padding: AppTheme.pagePadding(context),
         children: [
@@ -190,7 +189,7 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('更新', style: AppTheme.sectionLabel),
+                Text('更新', style: AppTheme.sectionLabel(context)),
                 const SizedBox(height: AppTheme.gapMd),
                 _SwitchRow(
                   key: const ValueKey('update-check-on-launch'),
@@ -244,7 +243,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       style: FilledButton.styleFrom(
                         backgroundColor: AppTheme.accent,
                         foregroundColor: Colors.white,
-                        textStyle: const TextStyle(
+                        textStyle: TextTheme.of(context).labelLarge!.copyWith(
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
                         ),
@@ -253,10 +252,10 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                     ),
                     const SizedBox(width: AppTheme.gapMd),
-                    const Expanded(
+                    Expanded(
                       child: Text(
                         '手动检查启动器与已关联应用的新版本。',
-                        style: AppTheme.captionMuted,
+                        style: AppTheme.captionMuted(context),
                       ),
                     ),
                   ],
@@ -276,28 +275,32 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('运行时发现', style: AppTheme.sectionLabel),
+                  Text('运行时发现', style: AppTheme.sectionLabel(context)),
                   const SizedBox(height: AppTheme.gapXs),
-                  const Text(
+                  Text(
                     '已忽略的应用连接时不再提示。恢复后，该应用下次连接时会重新出现在待批准中。',
-                    style: AppTheme.captionMuted,
+                    style: AppTheme.captionMuted(context),
                   ),
                   const SizedBox(height: AppTheme.gapMd),
                   for (final projectId in _ignoredDiscovery)
                     Row(
                       children: [
                         Expanded(
-                          child: Text(projectId, style: AppTheme.monoMuted),
+                          child: Text(
+                            projectId,
+                            style: AppTheme.monoMuted(context),
+                          ),
                         ),
                         TextButton(
                           key: ValueKey('restore-ignored/$projectId'),
                           onPressed: () => _restoreIgnored(projectId),
                           style: TextButton.styleFrom(
                             foregroundColor: AppTheme.accent,
-                            textStyle: const TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w500,
-                            ),
+                            textStyle: TextTheme.of(context).labelLarge!
+                                .copyWith(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w500,
+                                ),
                             minimumSize: const Size(0, 30),
                             padding: const EdgeInsets.symmetric(horizontal: 8),
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -346,8 +349,9 @@ class _SwitchRow extends StatelessWidget {
                 child: Text(
                   label,
                   style: enabled
-                      ? AppTheme.body
-                      : AppTheme.body.copyWith(color: AppTheme.textTertiary),
+                      ? AppTheme.body(context)
+                      : AppTheme.body(context)
+                            .copyWith(color: AppTheme.textTertiary),
                 ),
               ),
               Switch(value: value, onChanged: onChanged),
@@ -356,7 +360,7 @@ class _SwitchRow extends StatelessWidget {
           if (note != null)
             Padding(
               padding: const EdgeInsets.only(top: AppTheme.gapXs),
-              child: Text(note!, style: AppTheme.captionMuted),
+              child: Text(note!, style: AppTheme.captionMuted(context)),
             ),
         ],
       ),
@@ -373,6 +377,6 @@ class _ResultLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(text, style: AppTheme.caption.copyWith(color: color));
+    return Text(text, style: AppTheme.caption(context).copyWith(color: color));
   }
 }

@@ -26,9 +26,9 @@ class PendingSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('待批准', style: AppTheme.sectionLabel),
+        Text('待批准', style: AppTheme.sectionLabel(context)),
         const SizedBox(height: AppTheme.gapXs),
-        const Text('以下应用主动连接了启动器，等待你的一次性批准。', style: AppTheme.captionMuted),
+        Text('以下应用主动连接了启动器，等待你的一次性批准。', style: AppTheme.captionMuted(context)),
         const SizedBox(height: AppTheme.gapMd),
         for (final project in projects)
           Padding(
@@ -73,7 +73,10 @@ class PendingProjectCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CardHeader(
-              title: Text(project.displayName, style: AppTheme.cardTitle),
+              title: Text(
+                project.displayName,
+                style: AppTheme.cardTitle(context),
+              ),
               actions: [
                 FilledButton.tonalIcon(
                   onPressed: onApprove,
@@ -82,10 +85,8 @@ class PendingProjectCard extends StatelessWidget {
                   style: FilledButton.styleFrom(
                     backgroundColor: AppTheme.accentSoft,
                     foregroundColor: AppTheme.accent,
-                    textStyle: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    textStyle: TextTheme.of(context).labelLarge!
+                        .copyWith(fontSize: 12.5, fontWeight: FontWeight.w500),
                     minimumSize: const Size(0, 30),
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -95,10 +96,8 @@ class PendingProjectCard extends StatelessWidget {
                   onPressed: onIgnore,
                   style: TextButton.styleFrom(
                     foregroundColor: AppTheme.neutral,
-                    textStyle: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w500,
-                    ),
+                    textStyle: TextTheme.of(context).labelLarge!
+                        .copyWith(fontSize: 12.5, fontWeight: FontWeight.w500),
                     minimumSize: const Size(0, 30),
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -108,23 +107,26 @@ class PendingProjectCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppTheme.gapXs),
-            Text('项目标识：${project.projectId}', style: AppTheme.monoMuted),
+            Text(
+              '项目标识：${project.projectId}',
+              style: AppTheme.monoMuted(context),
+            ),
             const SizedBox(height: AppTheme.gapXs),
             Text(
               project.services.isEmpty
                   ? '服务：无（未声明）'
                   : '服务：${project.services.map((s) => '${s.name}（${s.id}）').join('、')}',
-              style: AppTheme.captionMuted,
+              style: AppTheme.captionMuted(context),
             ),
             const SizedBox(height: AppTheme.gapXs),
             Text(
               '来源进程：${project.sourceProcessPath ?? '未知'}',
-              style: AppTheme.monoMuted,
+              style: AppTheme.monoMuted(context),
             ),
             const SizedBox(height: AppTheme.gapXs),
             Text(
               '首次发现：${project.firstSeenAt.toLocal()}',
-              style: AppTheme.captionMuted,
+              style: AppTheme.captionMuted(context),
             ),
           ],
         ),

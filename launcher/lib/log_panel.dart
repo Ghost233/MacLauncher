@@ -75,7 +75,9 @@ class _LogPanelState extends State<LogPanel> {
                   color: AppTheme.textSecondary,
                 ),
                 const SizedBox(width: AppTheme.gapSm),
-                Expanded(child: Text(widget.title, style: AppTheme.cardTitle)),
+                Expanded(
+                  child: Text(widget.title, style: AppTheme.cardTitle(context)),
+                ),
                 if (state.isStale)
                   Tooltip(
                     message: state.reason ?? '读取失败，显示旧内容',
@@ -88,18 +90,18 @@ class _LogPanelState extends State<LogPanel> {
                         color: AppTheme.warnSoft,
                         borderRadius: BorderRadius.circular(999),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.history_rounded,
                             size: 12,
                             color: AppTheme.warn,
                           ),
-                          SizedBox(width: 4),
+                          const SizedBox(width: 4),
                           Text(
                             '旧内容',
-                            style: TextStyle(
+                            style: TextTheme.of(context).bodySmall!.copyWith(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w500,
                               color: AppTheme.warn,
@@ -173,7 +175,7 @@ class _LogStateMessage extends StatelessWidget {
         children: [
           Icon(icon, size: 28, color: iconColor),
           const SizedBox(height: AppTheme.gapSm),
-          Text(message, style: AppTheme.caption),
+          Text(message, style: AppTheme.caption(context)),
         ],
       ),
     );
@@ -215,7 +217,10 @@ class _LogList extends StatelessWidget {
                 ),
                 const SizedBox(width: AppTheme.gapSm),
                 Expanded(
-                  child: Text(notes.join('；'), style: AppTheme.captionMuted),
+                  child: Text(
+                    notes.join('；'),
+                    style: AppTheme.captionMuted(context),
+                  ),
                 ),
               ],
             ),
@@ -252,20 +257,10 @@ class _LogLine extends StatelessWidget {
         children: [
           Text(
             '[${annotations.join(' · ')}]',
-            style: TextStyle(
-              color: streamColor.withValues(alpha: 0.8),
-              fontFamily: 'monospace',
-              fontSize: 11,
-            ),
+            style: AppTheme.monoMuted(context)
+                .copyWith(color: streamColor.withValues(alpha: 0.8)),
           ),
-          Text(
-            entry.text,
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 12,
-              color: AppTheme.textPrimary,
-            ),
-          ),
+          Text(entry.text, style: AppTheme.mono(context)),
         ],
       ),
     );

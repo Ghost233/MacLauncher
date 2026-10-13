@@ -764,7 +764,7 @@ class _ManagementPageState extends State<ManagementPage> {
     _maybeShowInvalidGuidance();
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Ghost Launcher 管理'),
+        title: Text('Ghost Launcher 管理', style: AppTheme.pageTitle(context)),
         actions: [
           _LoginItemButton(
             label: _loginItemLabel,
@@ -779,10 +779,8 @@ class _ManagementPageState extends State<ManagementPage> {
             style: FilledButton.styleFrom(
               backgroundColor: AppTheme.accentSoft,
               foregroundColor: AppTheme.accent,
-              textStyle: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-              ),
+              textStyle: TextTheme.of(context).labelLarge!
+                  .copyWith(fontSize: 13, fontWeight: FontWeight.w500),
               minimumSize: const Size(0, 34),
               padding: const EdgeInsets.symmetric(horizontal: 14),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -813,7 +811,7 @@ class _ManagementPageState extends State<ManagementPage> {
                     SelectableText(
                       '监听端点启动失败：${widget.serverError}',
                       textAlign: TextAlign.center,
-                      style: AppTheme.caption,
+                      style: AppTheme.caption(context),
                     ),
                   ],
                 ),
@@ -830,10 +828,10 @@ class _ManagementPageState extends State<ManagementPage> {
                     color: AppTheme.textTertiary,
                   ),
                   const SizedBox(height: AppTheme.gapMd),
-                  const Text(
+                  Text(
                     '尚未关联任何项目。\n点击右上角「关联项目」，选择项目目录中的 maclauncher.json。',
                     textAlign: TextAlign.center,
-                    style: AppTheme.caption,
+                    style: AppTheme.caption(context),
                   ),
                 ],
               ),
@@ -934,7 +932,7 @@ class _LoginItemButton extends StatelessWidget {
               const SizedBox(width: 5),
               Text(
                 label,
-                style: TextStyle(
+                style: TextTheme.of(context).bodySmall!.copyWith(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                   color: color,

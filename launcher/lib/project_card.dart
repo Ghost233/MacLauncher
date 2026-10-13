@@ -82,7 +82,7 @@ class ProjectCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             CardHeader(
-              title: Text(binding.name, style: AppTheme.cardTitle),
+              title: Text(binding.name, style: AppTheme.cardTitle(context)),
               actions: [
                 StatusPill(
                   label: connected ? '应用连接：已连接' : '应用连接：未连接',
@@ -142,7 +142,7 @@ class ProjectCard extends StatelessWidget {
                     label: const Text('解除绑定'),
                     style: TextButton.styleFrom(
                       foregroundColor: AppTheme.danger,
-                      textStyle: const TextStyle(
+                      textStyle: TextTheme.of(context).labelLarge!.copyWith(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w500,
                       ),
@@ -151,7 +151,10 @@ class ProjectCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: AppTheme.gapXs),
-            Text('项目标识：${binding.projectId}', style: AppTheme.monoMuted),
+            Text(
+              '项目标识：${binding.projectId}',
+              style: AppTheme.monoMuted(context),
+            ),
             if (onMenuBarAllowedChanged != null)
               Row(
                 children: [
@@ -161,7 +164,7 @@ class ProjectCard extends StatelessWidget {
                       child: SwitchListTile(
                         key: ValueKey('menu-bar-${binding.projectId}'),
                         contentPadding: EdgeInsets.zero,
-                        title: const Text('允许应用显示菜单栏', style: AppTheme.body),
+                        title: Text('允许应用显示菜单栏', style: AppTheme.body(context)),
                         subtitle: Text(
                           menuBarUnsupported
                               ? '应用不支持菜单栏控制'
@@ -170,7 +173,7 @@ class ProjectCard extends StatelessWidget {
                               : handoffStatus == EntryHandoffStatus.failed
                               ? '尚未应用，可重试。'
                               : '开启后由应用自身设置决定是否显示。',
-                          style: AppTheme.captionMuted,
+                          style: AppTheme.captionMuted(context),
                         ),
                         value: preferences.isMenuBarAllowed(binding.projectId),
                         onChanged: menuBarUnsupported
@@ -204,7 +207,8 @@ class ProjectCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         '入口失效：$entryInvalid。重新运行该应用即可自动修复。',
-                        style: AppTheme.caption.copyWith(color: AppTheme.warn),
+                        style: AppTheme.caption(context)
+                            .copyWith(color: AppTheme.warn),
                       ),
                     ),
                   ],
@@ -237,16 +241,15 @@ class ProjectCard extends StatelessWidget {
                           Text(
                             '配置失效：${invalid.reason}（${invalid.detail}）。'
                             '已保留绑定与运行记录，暂停新启动。',
-                            style: AppTheme.caption.copyWith(
-                              color: AppTheme.warn,
-                            ),
+                            style: AppTheme.caption(context)
+                                .copyWith(color: AppTheme.warn),
                           ),
                           const SizedBox(height: AppTheme.gapSm),
-                          const Text(
+                          Text(
                             '两条出路：重新选择配置文件完成修复（绑定与偏好迁移'
                             '到新路径）；或解除绑定放弃，运行记录保留，项目'
                             '之后可再次关联。',
-                            style: AppTheme.captionMuted,
+                            style: AppTheme.captionMuted(context),
                           ),
                           const SizedBox(height: AppTheme.gapSm),
                           Row(
@@ -261,10 +264,11 @@ class ProjectCard extends StatelessWidget {
                                 style: FilledButton.styleFrom(
                                   backgroundColor: AppTheme.accentSoft,
                                   foregroundColor: AppTheme.accent,
-                                  textStyle: const TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                  textStyle: TextTheme.of(context).labelLarge!
+                                      .copyWith(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w500,
+                                      ),
                                   minimumSize: const Size(0, 30),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 10,
@@ -280,10 +284,11 @@ class ProjectCard extends StatelessWidget {
                                   foregroundColor: AppTheme.danger,
                                   disabledForegroundColor:
                                       AppTheme.textTertiary,
-                                  textStyle: const TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w500,
-                                  ),
+                                  textStyle: TextTheme.of(context).labelLarge!
+                                      .copyWith(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w500,
+                                      ),
                                   minimumSize: const Size(0, 30),
                                   padding: const EdgeInsets.symmetric(
                                     horizontal: 8,
@@ -295,10 +300,10 @@ class ProjectCard extends StatelessWidget {
                               ),
                               if (onUnbind == null) ...[
                                 const SizedBox(width: AppTheme.gapXs),
-                                const Expanded(
+                                Expanded(
                                   child: Text(
                                     '解除绑定将在后续版本提供。',
-                                    style: AppTheme.captionMuted,
+                                    style: AppTheme.captionMuted(context),
                                   ),
                                 ),
                               ],
@@ -341,7 +346,7 @@ class ProjectCard extends StatelessWidget {
                         '服务 ${service.name}（${service.id}）：声明已移除，'
                         '保留只读记录（移除于 ${service.removedAt.toLocal()}）；'
                         '不代表运行已终止。',
-                        style: AppTheme.captionMuted,
+                        style: AppTheme.captionMuted(context),
                       ),
                     ),
                     TextButton(
@@ -350,7 +355,10 @@ class ProjectCard extends StatelessWidget {
                           : () => onClearRetained!(service.id),
                       style: TextButton.styleFrom(
                         foregroundColor: AppTheme.neutral,
-                        textStyle: const TextStyle(fontSize: 12.5),
+                        textStyle: TextTheme.of(context).labelLarge!.copyWith(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w400,
+                        ),
                         minimumSize: const Size(0, 28),
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -531,7 +539,7 @@ class _ServiceRowState extends State<ServiceRow> {
           CardHeader(
             title: Text(
               '服务 ${widget.service.name}（${widget.service.id}）',
-              style: AppTheme.serviceName,
+              style: AppTheme.serviceName(context),
             ),
             actions: [
               if (_pending)
@@ -582,7 +590,7 @@ class _ServiceRowState extends State<ServiceRow> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('登录启动', style: AppTheme.captionMuted),
+                  Text('登录启动', style: AppTheme.captionMuted(context)),
                   Transform.scale(
                     scale: 0.75,
                     child: Switch(
@@ -610,10 +618,9 @@ class _ServiceRowState extends State<ServiceRow> {
               padding: const EdgeInsets.only(top: AppTheme.gapXs),
               child: Text(
                 _note!,
-                style: AppTheme.caption.copyWith(
-                  color: AppTheme.accent,
-                  fontStyle: FontStyle.italic,
-                ),
+                style: AppTheme.caption(
+                  context,
+                ).copyWith(color: AppTheme.accent, fontStyle: FontStyle.italic),
               ),
             ),
         ],
@@ -648,10 +655,8 @@ class _ActionButton extends StatelessWidget {
         label: Text(label),
         style: TextButton.styleFrom(
           foregroundColor: foreground,
-          textStyle: const TextStyle(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w500,
-          ),
+          textStyle: TextTheme.of(context).labelLarge!
+              .copyWith(fontSize: 12.5, fontWeight: FontWeight.w500),
           minimumSize: const Size(0, 30),
           padding: const EdgeInsets.symmetric(horizontal: 8),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -719,7 +724,7 @@ class _StatusView extends StatelessWidget {
         Expanded(
           child: Text(
             parts.join(' · '),
-            style: AppTheme.caption.copyWith(
+            style: AppTheme.caption(context).copyWith(
               color: view.isUnknown
                   ? AppTheme.textTertiary
                   : AppTheme.textSecondary,

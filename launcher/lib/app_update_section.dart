@@ -196,22 +196,23 @@ class _AppUpdateSectionState extends State<AppUpdateSection> {
           children: [
             Text(
               verified ? 'sha256 校验通过。' : '应用未提供校验值，未做完整性校验。',
-              style: AppTheme.caption,
+              style: AppTheme.caption(context),
             ),
             if (!done.opened)
               Padding(
                 padding: const EdgeInsets.only(top: AppTheme.gapSm),
                 child: Text(
                   '自动打开失败：${done.openError ?? '原因未知'}，请手动打开下面的文件。',
-                  style: AppTheme.caption.copyWith(color: AppTheme.warn),
+                  style: AppTheme.caption(context)
+                      .copyWith(color: AppTheme.warn),
                 ),
               ),
             const SizedBox(height: AppTheme.gapSm),
-            SelectableText(done.result.path, style: AppTheme.mono),
+            SelectableText(done.result.path, style: AppTheme.mono(context)),
             const SizedBox(height: AppTheme.gapSm),
-            const Text(
+            Text(
               '请在打开的 DMG 中手动完成替换安装；启动器不会改动应用目录。',
-              style: AppTheme.caption,
+              style: AppTheme.caption(context),
             ),
           ],
         ),
@@ -242,7 +243,7 @@ class _AppUpdateSectionState extends State<AppUpdateSection> {
         children: [
           Row(
             children: [
-              const Text('版本状况', style: AppTheme.sectionLabel),
+              Text('版本状况', style: AppTheme.sectionLabel(context)),
               const Spacer(),
               if (_querying)
                 const Padding(
@@ -316,7 +317,8 @@ class _AppUpdateSectionState extends State<AppUpdateSection> {
         style: FilledButton.styleFrom(
           backgroundColor: AppTheme.accent,
           foregroundColor: Colors.white,
-          textStyle: const TextStyle(fontSize: 12.5),
+          textStyle: TextTheme.of(context).labelLarge!
+              .copyWith(fontSize: 12.5, fontWeight: FontWeight.w400),
           minimumSize: const Size(0, 30),
           padding: const EdgeInsets.symmetric(horizontal: 12),
           tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -346,7 +348,7 @@ class _AppUpdateSectionState extends State<AppUpdateSection> {
           ),
         ),
         const SizedBox(width: AppTheme.gapSm),
-        Text(label, style: AppTheme.captionMuted),
+        Text(label, style: AppTheme.captionMuted(context)),
         TextButton(
           onPressed: () => _cancelToken?.cancel(),
           child: const Text('取消'),
@@ -370,9 +372,9 @@ class _AppUpdateSectionState extends State<AppUpdateSection> {
         Expanded(
           child: Text(
             _downloadNote!,
-            style: AppTheme.caption.copyWith(
-              color: failed ? AppTheme.danger : AppTheme.textTertiary,
-            ),
+            style: AppTheme.caption(
+              context,
+            ).copyWith(color: failed ? AppTheme.danger : AppTheme.textTertiary),
           ),
         ),
         if (failed && result is VersionStatusSnapshot)
@@ -459,7 +461,10 @@ class _AppUpdateSectionState extends State<AppUpdateSection> {
         ),
         const SizedBox(width: AppTheme.gapSm),
         Expanded(
-          child: Text(text, style: AppTheme.caption.copyWith(color: color)),
+          child: Text(
+            text,
+            style: AppTheme.caption(context).copyWith(color: color),
+          ),
         ),
       ],
     );

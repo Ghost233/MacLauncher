@@ -93,7 +93,7 @@ class _DownloadingDialog extends StatelessWidget {
             percent == null
                 ? '已下载 ${_formatBytes(state.downloadedBytes)}'
                 : '$percent · ${_formatBytes(state.downloadedBytes)} / ${_formatBytes(total!)}',
-            style: AppTheme.captionMuted,
+            style: AppTheme.captionMuted(context),
           ),
         ],
       ),
@@ -122,7 +122,7 @@ class _ChecksumDialog extends StatelessWidget {
           const SizedBox(height: AppTheme.gapSm),
           SelectableText(
             '期望：${state.expected}\n实际：${state.actual}',
-            style: AppTheme.monoMuted,
+            style: AppTheme.monoMuted(context),
           ),
         ],
       ),
@@ -157,19 +157,18 @@ class _RelaunchDialog extends StatelessWidget {
         children: [
           Text(
             state.verified ? 'sha256 校验通过。' : '未做 sha256 完整性校验。',
-            style: AppTheme.caption.copyWith(
-              color: state.verified ? AppTheme.ok : AppTheme.warn,
-            ),
+            style: AppTheme.caption(context)
+                .copyWith(color: state.verified ? AppTheme.ok : AppTheme.warn),
           ),
           if (state.openError != null) ...[
             const SizedBox(height: AppTheme.gapSm),
             Text(
               '未能自动打开安装包：${state.openError}',
-              style: AppTheme.caption.copyWith(color: AppTheme.danger),
+              style: AppTheme.caption(context).copyWith(color: AppTheme.danger),
             ),
           ],
           const SizedBox(height: AppTheme.gapSm),
-          SelectableText(state.path, style: AppTheme.monoMuted),
+          SelectableText(state.path, style: AppTheme.monoMuted(context)),
           const SizedBox(height: AppTheme.gapSm),
           const Text('请在打开的 DMG 中手动完成替换安装（启动器不会改动应用目录）。'),
           const SizedBox(height: AppTheme.gapSm),
@@ -178,7 +177,7 @@ class _RelaunchDialog extends StatelessWidget {
             const SizedBox(height: AppTheme.gapSm),
             Text(
               '重启失败：${state.relaunchError}',
-              style: AppTheme.caption.copyWith(color: AppTheme.danger),
+              style: AppTheme.caption(context).copyWith(color: AppTheme.danger),
             ),
           ],
         ],
