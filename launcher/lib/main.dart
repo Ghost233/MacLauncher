@@ -46,6 +46,53 @@ Future<String?> _relaunchViaNativeChannel() async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   registerLiveDebugExtensions();
+  runApp(LauncherStartupApp(initialization: _initializeApp()));
+}
+
+/// Paint a first frame while storage, configuration and login-start requests
+/// are pending. The native window may be opened before those tasks finish.
+class LauncherStartupApp extends StatelessWidget {
+  const LauncherStartupApp({super.key, required this.initialization});
+
+  final Future<MacLauncherApp> initialization;
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<MacLauncherApp>(
+    future: initialization,
+    builder: (context, snapshot) {
+      if (snapshot.hasData) return snapshot.data!;
+      return MaterialApp(
+        title: 'Ghost Launcher',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.material(),
+        home: Scaffold(
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(AppTheme.gapXl),
+              child: Builder(
+                builder: (context) => snapshot.hasError
+                    ? SelectableText(
+                        '启动失败：${snapshot.error}',
+                        style: AppTheme.body(context),
+                      )
+                    : Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: AppTheme.gapLg),
+                          Text('正在启动…', style: AppTheme.body(context)),
+                        ],
+                      ),
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+Future<MacLauncherApp> _initializeApp() async {
   final layout = EndpointLayout.forUser();
   final bindings = await BindingStore.load('${layout.directory}/bindings.json');
   final prefs = await PreferenceStore.load(
@@ -144,22 +191,20 @@ Future<void> main() async {
     return null;
   });
 
-  runApp(
-    MacLauncherApp(
-      server: server,
-      serverError: error,
-      bindings: bindings,
-      preferences: prefs,
-      refresher: refresher,
-      operations: operations,
-      handoff: handoff,
-      unbindFlow: unbindFlow,
-      pending: pending,
-      approval: approval,
-      updateService: AppUpdateService(layout: layout),
-      selfUpdateFlow: selfUpdateFlow,
-      corruptionReports: corruptionReports,
-    ),
+  return MacLauncherApp(
+    server: server,
+    serverError: error,
+    bindings: bindings,
+    preferences: prefs,
+    refresher: refresher,
+    operations: operations,
+    handoff: handoff,
+    unbindFlow: unbindFlow,
+    pending: pending,
+    approval: approval,
+    updateService: AppUpdateService(layout: layout),
+    selfUpdateFlow: selfUpdateFlow,
+    corruptionReports: corruptionReports,
   );
 }
 

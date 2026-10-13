@@ -11,6 +11,20 @@ let window = MainFlutterWindow(
   defer: false)
 window.isReleasedWhenClosed = false
 delegate.mainWindow = window
+// This native-only fixture has no Dart assets, so it stays on the pre-frame
+// surface. Assert the production fallback before exercising window actions.
+window.awakeFromNib()
+guard let controller = window.contentViewController as? FlutterViewController,
+      let color = controller.backgroundColor?.usingColorSpace(.sRGB),
+      let windowColor = window.backgroundColor.usingColorSpace(.sRGB),
+      abs(color.redComponent - 245.0 / 255) < 0.001,
+      abs(color.greenComponent - 246.0 / 255) < 0.001,
+      abs(color.blueComponent - 248.0 / 255) < 0.001,
+      windowColor == color else {
+  fputs("FAIL: cold-start Flutter surface is black before the first frame\n", stderr)
+  exit(1)
+}
+print("PASS: cold-start Flutter surface has a light background before the first frame")
 application.finishLaunching()
 guard application.activationPolicy() == .accessory else {
   fputs("FAIL: launcher starts with a Dock entry before opening the management window\n", stderr)

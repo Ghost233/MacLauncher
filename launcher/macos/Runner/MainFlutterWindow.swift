@@ -18,6 +18,11 @@ class MainFlutterWindow: NSWindow {
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
+    // Match AppTheme.background before Dart has submitted its first frame.
+    let startupBackground = NSColor(
+      srgbRed: 245.0 / 255, green: 246.0 / 255, blue: 248.0 / 255, alpha: 1)
+    self.backgroundColor = startupBackground
+    flutterViewController.backgroundColor = startupBackground
     let windowFrame = self.frame
     self.contentViewController = flutterViewController
     self.setFrame(windowFrame, display: true)
