@@ -5,17 +5,11 @@ description: 发布 MacLauncher 正式版（版本进位、推送、打 tag、�
 
 # deploy-release
 
-发布 MacLauncher 正式版。唯一执行入口是仓库脚本 `scripts/release.sh`；脚本行为与失败恢复的唯一事实来源是仓库文档 `docs/agents/release.md`，本 skill 不复述其实现。
+发布 MacLauncher 正式版。唯一执行入口是仓库脚本 `scripts/release.sh`；脚本行为、失败恢复与发布完成条件以[发布文档](../../../docs/agents/release.md)为准，本 skill 不复述其实现。
 
 ## 步骤
 
 1. 确认当前工作区是 MacLauncher 仓库，且用户明确要求发正式版。两者都成立才继续，否则停止并说明。
 2. 空跑 `scripts/release.sh --dry-run`，向用户展示将发布的版本号与 tag。dry-run 输出无异常即继续下一步。
 3. 执行 `scripts/release.sh`。完成标准：脚本输出「完成：vX.Y.Z 已推送」。脚本中途失败时，按错误消息与 `docs/agents/release.md` 的恢复表执行对应的 git 命令；恢复路径以该文档为准。
-4. 验证：跟踪 release.yml 管线直到结束：
-
-   ```sh
-   gh run list -R Ghost233/MacLauncher --workflow release.yml
-   ```
-
-   gh 网络抖动时重试几次再下结论。完成标准：管线绿灯，且 GitHub Release 的版本号与 `launcher/pubspec.yaml` 的 version 一致。
+4. 按发布文档的“发版后验证”检查本次 tag/提交对应的管线、正式 Release、远端资产和本地 Git 同步状态，全部满足完成条件后结束。发布资产的本地下载、哈希校验、安装或运行，仅在用户另行明确要求时执行。

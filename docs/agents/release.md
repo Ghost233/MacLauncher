@@ -34,8 +34,20 @@ scripts/release.sh             # 确认无误后真实执行
 
 ## 发版后验证
 
+用本次发布的实际 tag 替换 `vX.Y.Z`，查询对应管线与 Release 元数据：
+
 ```sh
-gh run list -R Ghost233/MacLauncher --workflow release.yml
+gh run list -R Ghost233/MacLauncher --workflow release.yml --branch vX.Y.Z --json databaseId,headBranch,headSha,status,conclusion,url
+gh release view vX.Y.Z -R Ghost233/MacLauncher --json tagName,isDraft,isPrerelease,assets,url
 ```
 
-管线绿灯且 GitHub Release 版本号与 `launcher/pubspec.yaml` 一致即完成。changelog 当前手工编写，Release notes 由管线生成固定文案。
+gh 网络抖动时重试几次再下结论。发布完成须同时满足：
+
+- 本次 tag 对应的 `release.yml` 已结束，`status` 为 `completed`、`conclusion` 为 `success`，`headSha` 与发布 tag 指向的提交一致。
+- GitHub Release 已正式发布，`isDraft` 和 `isPrerelease` 均为 `false`。`tagName` 去掉 `v` 后，与发布提交中 `launcher/pubspec.yaml` 的 version 一致。
+- 远端资产包含 `Ghost-Launcher-X.Y.Z.dmg` 和 `SHA256SUMS.txt`，两者的 `size` 均大于 0。
+- 当前工作区干净，本地 `main` 与远端 `main` 的完整提交 hash 一致。本地与远端发布 tag 均指向本次发布提交，当前分支不落后于远端。
+
+默认以这些远端发布结果和 Git 同步状态验收，满足后即结束。下载发布资产到本地、追加本地哈希校验、安装或运行，仅在用户另行明确要求时执行。发布前的本地门禁仍按仓库要求执行。
+
+changelog 当前手工编写，Release notes 由管线生成固定文案。
