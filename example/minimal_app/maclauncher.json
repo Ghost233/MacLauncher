@@ -4,5 +4,10 @@
   "services": [
     { "id": "demo", "name": "演示服务" },
     { "id": "worker", "name": "后台服务" }
-  ]
+  ],
+  "entry": {
+    "kind": "executable",
+    "path": "dart",
+    "args": ["run", "bin/minimal_app.dart"]
+  }
 }
