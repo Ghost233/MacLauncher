@@ -108,17 +108,33 @@ final sdk = MacLauncherSdk.connect(
 dart run maclauncher_sdk:codegen   # 读取 maclauncher.json，生成 maclauncher_manifest.g.dart
 ```
 
-- 生成产物是 `projectId`、服务 id 与显示名的常量；应用代码引用这些常量
-  组装 `MacLauncherSdk.connect(...)`，回调仍手写挂载。代码里不存在第二份
-  字面量，配置与自报在结构上不可能漂移。
+在应用项目根目录执行。默认读取 `./maclauncher.json`、写出
+`./lib/maclauncher_manifest.g.dart`；可用参数覆盖：
+
+```sh
+# --input 可简写为 -i，--output 可简写为 -o
+dart run maclauncher_sdk:codegen \
+  --input=path/to/maclauncher.json \
+  --output=lib/src/manifest.g.dart
+```
+
+生成产物是 `maclauncherProjectId` 与 `maclauncherServices`（服务 id →
+显示名）两组常量；应用代码引用这些常量组装 `MacLauncherSdk.connect(...)`，
+回调仍手写挂载。代码里不存在第二份字面量，配置与自报在结构上不可能漂移。
+
 - 生成文件提交进仓库、随代码评审；配置改动后重跑 codegen。
+- 失败即非零退出并在 stderr 给出可读原因：输入不可读或输出不可写（66）、
+  JSON 非法 / schemaVersion 未知 / 缺失必填字段（65）、参数用法错误
+  （64）——适合直接接进构建脚本，配置错误在构建期暴露。
 - 生成器只产常量，不含拉起入口：打包后的安装路径构建期不可知，入口由
   `SdkEntry.currentAppBundle()` 在运行期推断；JSON 的 `entry` 段仅服务
   开发期配置绑定。
 - 不跑 codegen 也能接入：手写常量并保持与 `maclauncher.json` 一致即可
   （开发期握手一致性校验兜底），生成器只是消灭手工对齐。
 
-（codegen 工具尚在开发；落地前按最后一条手写常量接入。）
+可运行示例见 `example/minimal_app/`：`maclauncher.json` 声明项目与服务，
+`lib/maclauncher_manifest.g.dart` 由 codegen 生成并提交，`bin/minimal_app.dart`
+直接引用生成常量组装 `connect`。
 
 ## 回调契约
 
