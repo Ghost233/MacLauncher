@@ -45,8 +45,16 @@ String generateManifestConstants(String jsonText) {
     );
   }
 
-  final project = (json['project'] as Map?)?.cast<String, Object?>() ?? {};
-  final projectId = project['id'] as String? ?? '';
+  final project = switch (json['project']) {
+    null => const <String, Object?>{},
+    final Map m => m.cast<String, Object?>(),
+    _ => throw ManifestCodegenException('project must be an object'),
+  };
+  final projectId = switch (project['id']) {
+    null => '',
+    final String s => s,
+    _ => throw ManifestCodegenException('project.id must be a string'),
+  };
   if (projectId.isEmpty) {
     throw ManifestCodegenException('project.id is required (non-empty string)');
   }
@@ -68,11 +76,21 @@ String generateManifestConstants(String jsonText) {
       throw ManifestCodegenException('service entries must be objects');
     }
     final entry = raw.cast<String, Object?>();
-    final id = entry['id'] as String? ?? '';
+    final id = switch (entry['id']) {
+      null => '',
+      final String s => s,
+      _ => throw ManifestCodegenException('service id must be a string'),
+    };
     if (id.isEmpty) {
       throw ManifestCodegenException('every service needs a non-empty id');
     }
-    final name = entry['name'] as String? ?? '';
+    final name = switch (entry['name']) {
+      null => '',
+      final String s => s,
+      _ => throw ManifestCodegenException(
+        'service "$id" name must be a string',
+      ),
+    };
     if (name.isEmpty) {
       throw ManifestCodegenException(
         'service "$id" needs a non-empty name (display name)',

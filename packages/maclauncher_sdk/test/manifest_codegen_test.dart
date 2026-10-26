@@ -207,6 +207,49 @@ void main() {
       }
     });
 
+    test('字段类型不符统一抛 ManifestCodegenException（不逃裸 TypeError）', () {
+      final cases = <String, String>{
+        '"project" 为数组': '{"schemaVersion": 1, "project": [1], "services": []}',
+        '"project" 为字符串':
+            '{"schemaVersion": 1, "project": "x", "services": []}',
+        'project.id 为数字':
+            '{"schemaVersion": 1, "project": {"id": 123}, "services": []}',
+        '服务条目为数字':
+            '{"schemaVersion": 1, "project": {"id": "p"}, "services": [1]}',
+        '服务条目为字符串':
+            '{"schemaVersion": 1, "project": {"id": "p"}, "services": ["x"]}',
+        '服务 id 为数字': '{"schemaVersion": 1, "project": {"id": "p"}, "services": [{"id": 1, "name": "n"}]}',
+        '服务 name 为数字': '{"schemaVersion": 1, "project": {"id": "p"}, "services": [{"id": "s", "name": 2}]}',
+        '服务 name 为 null': '{"schemaVersion": 1, "project": {"id": "p"}, "services": [{"id": "s", "name": null}]}',
+      };
+      for (final entry in cases.entries) {
+        expect(
+          () => generateManifestConstants(entry.value),
+          throwsA(isA<ManifestCodegenException>()),
+          reason: entry.key,
+        );
+      }
+    });
+
+    test('类型错误的失败原因可读（点名字段与期望类型）', () {
+      try {
+        generateManifestConstants(
+          '{"schemaVersion": 1, "project": {"id": 123}, "services": []}',
+        );
+        fail('应抛出 ManifestCodegenException');
+      } on ManifestCodegenException catch (e) {
+        expect(e.message, contains('project.id'));
+      }
+      try {
+        generateManifestConstants(
+          '{"schemaVersion": 1, "project": {"id": "p"}, "services": [{"id": "s", "name": 2}]}',
+        );
+        fail('应抛出 ManifestCodegenException');
+      } on ManifestCodegenException catch (e) {
+        expect(e.message, contains('"s"'));
+      }
+    });
+
     test('重复服务 id', () {
       expect(
         () => generateManifestConstants('''

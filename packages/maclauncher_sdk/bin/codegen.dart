@@ -29,17 +29,23 @@ Future<void> main(List<String> args) async {
 
   for (var i = 0; i < args.length; i++) {
     final arg = args[i];
-    String? value;
+    // 先把每个参数解析成 (flag, value)，再统一按 flag 赋值。
+    final String flag;
+    final String? value;
     if (arg == '-h' || arg == '--help') {
       stdout.write(_usage);
       return;
     } else if (arg == '-i' || arg == '--input') {
+      flag = 'input';
       value = ++i < args.length ? args[i] : null;
     } else if (arg == '-o' || arg == '--output') {
+      flag = 'output';
       value = ++i < args.length ? args[i] : null;
     } else if (arg.startsWith('--input=')) {
+      flag = 'input';
       value = arg.substring('--input='.length);
     } else if (arg.startsWith('--output=')) {
+      flag = 'output';
       value = arg.substring('--output='.length);
     } else {
       stderr.writeln('codegen: unknown argument: $arg');
@@ -53,7 +59,7 @@ Future<void> main(List<String> args) async {
       exitCode = _exitUsage;
       return;
     }
-    if (arg == '-i' || arg == '--input' || arg.startsWith('--input=')) {
+    if (flag == 'input') {
       input = value;
     } else {
       output = value;
