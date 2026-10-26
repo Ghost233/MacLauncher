@@ -56,12 +56,14 @@ SDK 连接成功不等于被接受。关联有两条路径：
    `entry`（见下文「自报项目信息」），项目出现在启动器的待批准列表，
    用户点一次「批准」即完成关联，全程无需配置文件。批准前握手按
    `pending-approval` 拒绝，SDK 自动重连重试属正常。
-2. **配置文件（可选增强）**：项目目录放置 `maclauncher.json`（schemaVersion 1，
+2. **配置文件（开发期联调，可选）**：项目目录放置 `maclauncher.json`（schemaVersion 1，
    见 [PROJECT_ASSOCIATION.md](PROJECT_ASSOCIATION.md)），在启动器中
    「关联项目」选择该文件。SDK 的 `projectId` 必须与配置里的
    `project.id` 一致，`services` 的键必须与配置里的服务 id 一致——
    不一致会在握手时被拒绝（`SdkConnectionState.rejected`，reason 说明
    原因）。配置文件提供稳定的服务清单、完整拉起命令与配置刷新。
+   打包发布的应用不随包分发配置文件，走运行时发现（见下文「打包发布」，
+   ADR 0005）。
 
 被用户加入忽略列表的项目，握手静默拒绝且不出现在待批准；在启动器
 设置页移除后恢复。
@@ -96,6 +98,27 @@ final sdk = MacLauncherSdk.connect(
   （被删除的声明在启动器中保留只读记录）。
 - 入口路径失效（应用被移动/删除）时，启动器卡片显示「入口失效」；
   应用重新运行并连接后，自报自动修复绑定里的入口。
+
+## 打包发布
+
+打包发布的应用走运行时发现，不随包分发、也不在运行期读取
+`maclauncher.json`（ADR 0005）：配置降级为 **codegen 的构建输入**。
+
+```sh
+dart run maclauncher_sdk:codegen   # 读取 maclauncher.json，生成 maclauncher_manifest.g.dart
+```
+
+- 生成产物是 `projectId`、服务 id 与显示名的常量；应用代码引用这些常量
+  组装 `MacLauncherSdk.connect(...)`，回调仍手写挂载。代码里不存在第二份
+  字面量，配置与自报在结构上不可能漂移。
+- 生成文件提交进仓库、随代码评审；配置改动后重跑 codegen。
+- 生成器只产常量，不含拉起入口：打包后的安装路径构建期不可知，入口由
+  `SdkEntry.currentAppBundle()` 在运行期推断；JSON 的 `entry` 段仅服务
+  开发期配置绑定。
+- 不跑 codegen 也能接入：手写常量并保持与 `maclauncher.json` 一致即可
+  （开发期握手一致性校验兜底），生成器只是消灭手工对齐。
+
+（codegen 工具尚在开发；落地前按最后一条手写常量接入。）
 
 ## 回调契约
 
