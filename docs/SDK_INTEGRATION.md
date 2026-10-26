@@ -112,9 +112,10 @@ dart run maclauncher_sdk:codegen   # 读取 maclauncher.json，生成 maclaunche
 `./lib/maclauncher_manifest.g.dart`；可用参数覆盖：
 
 ```sh
+# --input 可简写为 -i，--output 可简写为 -o
 dart run maclauncher_sdk:codegen \
-  --input=path/to/maclauncher.json \   # 或 -i
-  --output=lib/src/manifest.g.dart     # 或 -o
+  --input=path/to/maclauncher.json \
+  --output=lib/src/manifest.g.dart
 ```
 
 生成产物是 `maclauncherProjectId` 与 `maclauncherServices`（服务 id →
