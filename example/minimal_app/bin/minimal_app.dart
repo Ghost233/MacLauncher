@@ -4,11 +4,16 @@ import 'dart:io';
 import 'package:maclauncher_sdk/maclauncher_sdk.dart';
 import 'package:minimal_app/fake_business.dart';
 import 'package:minimal_app/fake_version_status.dart';
+import 'package:minimal_app/maclauncher_manifest.g.dart';
 
 /// Minimal controlled peer: registers two fake services and stays connected.
 ///
-/// Usage: `dart run bin/minimal_app.dart <projectId> [socketPath]`
+/// Usage: `dart run bin/minimal_app.dart [projectId] [socketPath]`
 /// `[--version-status=success|failure|unsupported]`
+///
+/// `projectId` defaults to the generated [maclauncherProjectId] constant
+/// (from `maclauncher.json` via `dart run maclauncher_sdk:codegen`); pass an
+/// explicit value only when a test config declares a different identity.
 ///
 /// The version status mode may also be set via the
 /// MACLAUNCHER_VERSION_STATUS environment variable (the flag wins).
@@ -17,14 +22,6 @@ Future<void> main(List<String> args) async {
     for (final a in args)
       if (!a.startsWith('--')) a,
   ];
-  if (positional.isEmpty) {
-    stderr.writeln(
-      'usage: minimal_app <projectId> [socketPath] '
-      '[--$kVersionStatusFlag=success|failure|unsupported]',
-    );
-    exitCode = 64;
-    return;
-  }
   final DemoVersionStatusMode versionStatusMode;
   try {
     versionStatusMode = resolveDemoVersionStatusMode(
@@ -36,15 +33,17 @@ Future<void> main(List<String> args) async {
     exitCode = 64;
     return;
   }
-  final projectId = positional[0];
+  final projectId = positional.isNotEmpty
+      ? positional[0]
+      : maclauncherProjectId;
   final socketPath = positional.length > 1 ? positional[1] : null;
 
   final sdk = MacLauncherSdk.connect(
     projectId: projectId,
     socketPath: socketPath,
     services: {
-      'demo': FakeBusiness(name: '演示服务').callbacks(),
-      'worker': FakeBusiness(name: '后台服务').callbacks(),
+      for (final entry in maclauncherServices.entries)
+        entry.key: FakeBusiness(name: entry.value).callbacks(),
     },
     app: demoVersionStatusCallbacks(versionStatusMode),
   );

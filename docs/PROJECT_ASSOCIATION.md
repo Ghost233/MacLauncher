@@ -50,6 +50,9 @@ MacLauncher 只管理用户显式关联的项目。关联有两条路径：**运
 ```
 
 - `project.id` 是项目身份，必须全局唯一且稳定；改名（`project.name`）不产生新身份。
+- `project.id` 不得以 `@` 开头：`@` 前缀是启动器内部保留键（PreferenceStore
+  顶层键的命名空间，如 `@updates`），以 `@` 开头的身份在关联时被拒绝
+  （`reserved-project-id`）。
 - `services` 声明管理范围；应用运行时可以声明额外服务，但请求只路由到绑定范围内
   的服务，未知额外服务一律忽略。
 - `entry` 为可选拉起入口：`app`（.app 包，经系统 `open` 打开）或
